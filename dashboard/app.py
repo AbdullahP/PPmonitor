@@ -9,7 +9,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 from config import settings
 from monitor.health import get_product_status, get_system_health
