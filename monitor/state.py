@@ -1,5 +1,6 @@
 """PostgreSQL state management for the stock monitor."""
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -19,10 +20,31 @@ class StateManager:
     @classmethod
     async def create(cls, database_url: str | None = None) -> "StateManager":
         url = database_url or settings.database_url
-        pool = await asyncpg.create_pool(url, min_size=2, max_size=10)
+        pool = await cls._connect_with_retry(url)
         mgr = cls(pool)
         await mgr._run_migrations()
         return mgr
+
+    @staticmethod
+    async def _connect_with_retry(
+        url: str,
+        max_attempts: int = 10,
+        base_delay: float = 2.0,
+    ) -> asyncpg.Pool:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                pool = await asyncpg.create_pool(url, min_size=2, max_size=10)
+                logger.info("Connected to database (attempt %d)", attempt)
+                return pool
+            except (OSError, asyncpg.PostgresError) as exc:
+                if attempt == max_attempts:
+                    raise
+                delay = base_delay * attempt
+                logger.warning(
+                    "Database connection failed (attempt %d/%d): %s — retrying in %.0fs",
+                    attempt, max_attempts, exc, delay,
+                )
+                await asyncio.sleep(delay)
 
     async def close(self):
         await self._pool.close()
