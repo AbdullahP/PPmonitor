@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name or product.product_id }} - Pokemon Monitor{% endblock %}
+{% block content %}
+
+<hgroup>
+  <h2>{{ product.name or product.product_id }}</h2>
+  <p>
+    <a href="{{ product.url }}" target="_blank">View on bol.com</a> |
+    Product ID: {{ product.product_id }}
+    {% if product.offer_uid %} | Offer: {{ product.offer_uid[:8] }}...{% endif %}
+  </p>
+</hgroup>
+
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="number">
+      {% if product.last_availability == 'InStock' %}
+        <span style="color: #155724;">In Stock</span>
+      {% elif product.last_availability == 'OutOfStock' %}
+        <span style="color: #721c24;">Out of Stock</span>
+      {% else %}
+        Unknown
+      {% endif %}
+    </div>
+    <div class="label">Availability</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">{{ ('€' + product.price) if product.price else '-' }}</div>
+    <div class="label">Price</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">{{ product.consecutive_failures|default(0) }}</div>
+    <div class="label">Consecutive Failures</div>
+  </div>
+</div>
+
+<h3>Poll History (last {{ poll_history|default([])|length }})</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Success</th>
+      <th>Latency</th>
+      <th>Availability</th>
+      <th>Revision</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for poll in poll_history %}
+    <tr>
+      <td>{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
+      <td>
+        {% if poll.success %}
+          <span class="badge badge-healthy">OK</span>
+        {% else %}
+          <span class="badge badge-dead">FAIL</span>
+        {% endif %}
+      </td>
+      <td>{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
+      <td>{{ poll.availability or '-' }}</td>
+      <td>{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if errors %}
+<h3>Recent Errors ({{ errors|length }})</h3>
+<table>
+  <thead>
+    <tr><th>Time</th><th>Error</th></tr>
+  </thead>
+  <tbody>
+    {% for e in errors %}
+    <tr>
+      <td>{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+      <td>{{ e.error_message or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if alerts %}
+<h3>Alert History</h3>
+<table>
+  <thead>
+    <tr><th>Time</th><th>Type</th><th>Message</th></tr>
+  </thead>
+  <tbody>
+    {% for a in alerts %}
+    <tr>
+      <td>{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+      <td>{{ a.alert_type }}</td>
+      <td>{{ a.message or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

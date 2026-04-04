@@ -1,0 +1,72 @@
+# Production-ready base compose. Use with docker-compose.override.yml for local dev.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pokemon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pokemon}
+      POSTGRES_DB: pokemon_monitor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pokemon -d pokemon_monitor"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pokemon:${POSTGRES_PASSWORD:-pokemon}@postgres:5432/pokemon_monitor
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pokemon:${POSTGRES_PASSWORD:-pokemon}@postgres:5432/pokemon_monitor
+
+  redirect:
+    build:
+      context: .
+      dockerfile: Dockerfile.redirect
+    ports:
+      - "${REDIRECT_PORT:-8080}:8080"
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pokemon:${POSTGRES_PASSWORD:-pokemon}@postgres:5432/pokemon_monitor
+      DASHBOARD_AUTH_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  pgdata:

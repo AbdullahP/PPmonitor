@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Error Logs - Pokemon Monitor{% endblock %}
+{% block content %}
+
+<h2>Error Logs</h2>
+
+<form method="GET" action="/logs" style="margin-bottom: 1rem;">
+  <div class="grid">
+    <select name="product_id">
+      <option value="">All products</option>
+      {% for p in products %}
+      <option value="{{ p.product_id }}" {% if selected_product == p.product_id %}selected{% endif %}>
+        {{ p.name or p.product_id }}
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+  </div>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Product</th>
+      <th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in errors %}
+    <tr>
+      <td>{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+      <td><a href="/product/{{ e.product_id }}">{{ e.product_id }}</a></td>
+      <td>{{ e.error_message or '-' }}</td>
+    </tr>
+    {% endfor %}
+    {% if not errors %}
+    <tr><td colspan="3" style="text-align:center">No errors found</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+{% endblock %}

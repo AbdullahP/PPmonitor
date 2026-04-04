@@ -1,0 +1,47 @@
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Status</th>
+      <th>Availability</th>
+      <th>Price</th>
+      <th>Last Polled</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in products %}
+    <tr>
+      <td><a href="/product/{{ p.product_id }}">{{ p.name or p.product_id }}</a></td>
+      <td>
+        {% if p.status == 'healthy' %}
+          <span class="badge badge-healthy">healthy</span>
+        {% elif p.status == 'slow' %}
+          <span class="badge badge-slow">slow</span>
+        {% else %}
+          <span class="badge badge-dead">dead</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if p.last_availability == 'InStock' %}
+          <span class="badge badge-instock">In Stock</span>
+        {% elif p.last_availability == 'OutOfStock' %}
+          <span class="badge badge-outofstock">Out of Stock</span>
+        {% else %}
+          <span class="badge">Unknown</span>
+        {% endif %}
+      </td>
+      <td>{{ ('€' + p.price) if p.price else '-' }}</td>
+      <td>{{ p.last_polled_at.strftime('%H:%M:%S') if p.last_polled_at else 'Never' }}</td>
+      <td>
+        <form method="POST" action="/monitor/remove/{{ p.product_id }}" style="margin:0">
+          <button type="submit" class="outline secondary" style="padding:4px 12px; margin:0">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not products %}
+    <tr><td colspan="6" style="text-align:center">No products monitored yet</td></tr>
+    {% endif %}
+  </tbody>
+</table>

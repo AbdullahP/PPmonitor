@@ -1,0 +1,59 @@
+# Local dev overrides. Auto-loaded by docker-compose alongside docker-compose.yml.
+# - Mounts source code as volumes (live reload without rebuilding)
+# - Adds mock_server service
+# - Points monitor at mock server
+# - Disables Discord webhooks by default
+# - Exposes postgres port for local tools
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  mock_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    ports:
+      - "8099:8099"
+    volumes:
+      - ./mock_server:/app/mock_server
+      - ./config.py:/app/config.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8099/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  monitor:
+    volumes:
+      - ./monitor:/app/monitor
+      - ./config.py:/app/config.py
+    environment:
+      BOL_BASE_URL: http://mock_server:8099
+      DISCORD_ENABLED: "false"
+    depends_on:
+      mock_server:
+        condition: service_healthy
+
+  bot:
+    volumes:
+      - ./bot:/app/bot
+      - ./monitor:/app/monitor
+      - ./config.py:/app/config.py
+    environment:
+      DISCORD_ENABLED: "false"
+
+  redirect:
+    volumes:
+      - ./redirect:/app/redirect
+      - ./config.py:/app/config.py
+
+  dashboard:
+    ports:
+      - "3000:3000"
+    environment:
+      DASHBOARD_AUTH_ENABLED: "false"
+    volumes:
+      - ./dashboard:/app/dashboard
+      - ./monitor:/app/monitor
+      - ./config.py:/app/config.py

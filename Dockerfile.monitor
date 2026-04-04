@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY config.py .
+COPY monitor/ monitor/
+COPY mock_server/ mock_server/
+COPY redirect/ redirect/
+COPY dashboard/ dashboard/
+COPY migrations/ migrations/
+COPY tests/ tests/
+CMD ["python", "-m", "monitor.poller"]

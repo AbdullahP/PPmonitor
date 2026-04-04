@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Overview - Pokemon Monitor{% endblock %}
+{% block content %}
+
+{% if not sys_health.monitor_alive|default(false) %}
+<div class="critical-banner">CRITICAL: Monitor heartbeat lost — no heartbeat in last 2 minutes</div>
+{% endif %}
+
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="number">{{ sys_health.total_products|default(0) }}</div>
+    <div class="label">Monitored</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">{{ sys_health.healthy|default(0) }}</div>
+    <div class="label">Healthy</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">{{ sys_health.slow|default(0) + sys_health.dead|default(0) }}</div>
+    <div class="label">Unhealthy</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">{{ alerts_today|default(0) }}</div>
+    <div class="label">Alerts Today</div>
+  </div>
+</div>
+
+<h3>Monitored Products</h3>
+<div hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML">
+  {% include "_products_table.html" %}
+</div>
+
+<hr>
+
+<h3>Add Product</h3>
+<form method="POST" action="/monitor/add">
+  <div class="grid">
+    <label>
+      Bol.com URL
+      <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required>
+    </label>
+    <label>
+      Name (optional)
+      <input type="text" name="name" placeholder="Product name">
+    </label>
+  </div>
+  <button type="submit">Add Product</button>
+</form>
+
+{% if discovered %}
+<hr>
+<h3>Discovered Products (pending approval)</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Product ID</th>
+      <th>Source</th>
+      <th>Discovered</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in discovered %}
+    <tr>
+      <td><a href="{{ d.url }}" target="_blank">{{ d.product_id }}</a></td>
+      <td>{{ d.source }}</td>
+      <td>{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
+      <td>
+        <form method="POST" action="/monitor/add" style="margin:0">
+          <input type="hidden" name="url" value="{{ d.url }}">
+          <input type="hidden" name="name" value="{{ d.name or '' }}">
+          <button type="submit" class="outline" style="padding:4px 12px; margin:0">Monitor</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

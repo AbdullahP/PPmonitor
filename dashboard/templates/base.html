@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Pokemon Monitor{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    :root { --pico-font-size: 15px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+             font-size: 0.8em; font-weight: 600; }
+    .badge-healthy { background: #d4edda; color: #155724; }
+    .badge-slow { background: #fff3cd; color: #856404; }
+    .badge-dead { background: #f8d7da; color: #721c24; }
+    .badge-instock { background: #d4edda; color: #155724; }
+    .badge-outofstock { background: #f8d7da; color: #721c24; }
+    .stats-bar { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .stat-card { flex: 1; min-width: 120px; padding: 1rem; border-radius: 8px;
+                 background: var(--pico-card-background-color);
+                 border: 1px solid var(--pico-muted-border-color); text-align: center; }
+    .stat-card .number { font-size: 2em; font-weight: 700; }
+    .stat-card .label { font-size: 0.85em; color: var(--pico-muted-color); }
+    nav ul { list-style: none; display: flex; gap: 1rem; padding: 0; }
+    .critical-banner { background: #dc3545; color: white; padding: 0.5rem 1rem;
+                       text-align: center; font-weight: 600; border-radius: 4px;
+                       margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <nav>
+      <ul>
+        <li><strong>Pokemon Monitor</strong></li>
+      </ul>
+      <ul>
+        <li><a href="/">Overview</a></li>
+        <li><a href="/logs">Logs</a></li>
+        <li><a href="/alerts">Alerts</a></li>
+        <li><a href="/logout">Logout</a></li>
+      </ul>
+    </nav>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
