@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     dashboard_secret_key: str = "change-me-in-production"
     dashboard_port: int = 3000
 
+    # Railway / generic
+    port: int = 8080
+
     # Mock server
     mock_server_port: int = 8099
 
