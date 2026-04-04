@@ -1,0 +1,6 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "../Dockerfile.bot"
+
+[deploy]
+startCommand = "python -m bot.bot"

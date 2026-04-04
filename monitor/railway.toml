@@ -1,0 +1,6 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "../Dockerfile.monitor"
+
+[deploy]
+startCommand = "python -m monitor.poller"
