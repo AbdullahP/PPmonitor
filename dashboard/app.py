@@ -101,30 +101,110 @@ app.add_middleware(SessionAuthMiddleware)
 
 _LOGIN_HTML = """\
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login — Pokemon Monitor</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwindcss.config={{theme:{{extend:{{colors:{{bg:'#0f1117',card:'#1a1d2e',border:'#2d3148',accent:'#3b82f6'}}}}}}}}</script>
+  <title>Pokemon Monitor — Login</title>
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{
+      background: #0f1117;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .login-card {{
+      background: #1a1d2e;
+      border: 1px solid #2d3148;
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }}
+    .logo {{
+      text-align: center;
+      margin-bottom: 8px;
+      font-size: 2rem;
+    }}
+    h1 {{
+      text-align: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #f1f5f9;
+    }}
+    .subtitle {{
+      text-align: center;
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin-bottom: 36px;
+    }}
+    label {{
+      display: block;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }}
+    input {{
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      color: #f1f5f9;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      transition: border-color 0.15s;
+    }}
+    input:focus {{
+      outline: none;
+      border-color: #3b82f6;
+    }}
+    button {{
+      width: 100%;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 13px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }}
+    button:hover {{ background: #2563eb; }}
+    .error {{
+      background: #450a0a;
+      border: 1px solid #ef4444;
+      color: #ef4444;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }}
+  </style>
 </head>
-<body class="bg-bg min-h-screen flex items-center justify-center">
-  <div class="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-2xl">
-    <h2 class="text-xl font-bold text-slate-100 mb-6 text-center">Pokemon Monitor</h2>
-    {error}
-    <form method="post" action="/login" class="space-y-4">
-      <div>
-        <label for="username" class="block text-sm text-slate-400 mb-1">Username</label>
-        <input type="text" id="username" name="username" required autofocus
-               class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-slate-100 focus:border-accent focus:outline-none">
-      </div>
-      <div>
-        <label for="password" class="block text-sm text-slate-400 mb-1">Password</label>
-        <input type="password" id="password" name="password" required
-               class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-slate-100 focus:border-accent focus:outline-none">
-      </div>
-      <button type="submit" class="w-full bg-accent hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition">Sign in</button>
+<body>
+  <div class="login-card">
+    <div class="logo">&#9889;</div>
+    <h1>Pokemon Monitor</h1>
+    <p class="subtitle">Stock monitoring dashboard</p>
+    {error_block}
+    <form method="POST" action="/login">
+      <label>Username</label>
+      <input type="text" name="username" autofocus autocomplete="username">
+      <label>Password</label>
+      <input type="password" name="password" autocomplete="current-password">
+      <button type="submit">Sign in &rarr;</button>
     </form>
   </div>
 </body>
@@ -135,7 +215,7 @@ _LOGIN_HTML = """\
 async def login_page():
     if not settings.dashboard_auth_enabled:
         return RedirectResponse("/", status_code=303)
-    return HTMLResponse(_LOGIN_HTML.format(error=""))
+    return HTMLResponse(_LOGIN_HTML.format(error_block=""))
 
 
 @app.post("/login")
@@ -158,7 +238,7 @@ async def login_submit(username: str = Form(...), password: str = Form(...)):
         return response
 
     return HTMLResponse(
-        _LOGIN_HTML.format(error='<p class="text-red-400 text-sm mb-4 text-center">Invalid username or password.</p>'),
+        _LOGIN_HTML.format(error_block='<div class="error">Invalid username or password</div>'),
         status_code=401,
     )
 
