@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # PostgreSQL
-    database_url: str = "postgresql://pokemon:pokemon@localhost:5432/pokemon_monitor"
+    database_url: str
 
     # Discord
     discord_enabled: bool = True
