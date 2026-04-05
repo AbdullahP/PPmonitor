@@ -20,3 +20,8 @@ Phase 17: Rate limiter — adaptive per-shop rate limiting with backoff (429/503
 Phase 18: Intelligence — upcoming sets scanner, auto-discovers products 14 days before release
 Phase 19: Predictor — restock drop prediction from poll history transitions, confidence scoring
 Phase 20: Dashboard redesign — Tailwind dark theme, sidebar nav, shop pills, rate limiter + upcoming sets sections
+Phase 21: Redirect — multi-shop redirect service (bol form POST, mediamarkt fetch API, Shopify/WooCommerce, fallback redirects)
+Phase 22: Alerts — shop-aware Discord embeds with per-shop emoji, shop param in redirect URLs
+Phase 23: Search URLs — get_search_url() per adapter, intelligence engine uses search + category URLs
+Phase 24: Health — per-shop rate limiter status persisted in heartbeat JSONB, dashboard prefers heartbeat data
+Phase 25: Tests — 42 tests: rate limiter, all 6 adapters, redirect per shop, intelligence module
