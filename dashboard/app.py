@@ -107,7 +107,7 @@ _LOGIN_HTML = """\
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login — Pokemon Monitor</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwindcss.config={{theme:{{extend:{{colors:{{bg:'#0f1117',card:'#1a1d2e',border:'#2d3148',accent:'#3b82f6'}}}}}}}}}</script>
+  <script>tailwindcss.config={{theme:{{extend:{{colors:{{bg:'#0f1117',card:'#1a1d2e',border:'#2d3148',accent:'#3b82f6'}}}}}}}}</script>
 </head>
 <body class="bg-bg min-h-screen flex items-center justify-center">
   <div class="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-2xl">
