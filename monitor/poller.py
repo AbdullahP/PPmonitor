@@ -9,6 +9,7 @@ import httpx
 from config import settings
 from monitor.alerts import send_error_alert, send_out_of_stock_alert, send_stock_alert
 from monitor.health import log_poll_result, write_heartbeat
+from monitor.rate_limiter import get_limiter
 from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
 
@@ -30,10 +31,18 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
             url = p["url"]
             shop = p.get("shop", "bol")
 
+            limiter = get_limiter(shop)
+
+            # Skip if this shop is paused (e.g. after a 403)
+            if limiter.is_paused():
+                logger.debug("Skipping %s [%s] — shop paused", product_id, shop)
+                continue
+
             try:
                 adapter = get_adapter(shop)
                 data = await adapter.fetch_product(client, url)
                 polled += 1
+                limiter.record_result(success=True)
 
                 await log_poll_result(
                     state,
@@ -69,32 +78,52 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                     last_polled_at=datetime.now(timezone.utc),
                 )
 
-            except Exception as exc:
+            except httpx.HTTPStatusError as exc:
                 polled += 1
-                error_msg = f"{type(exc).__name__}: {exc}"
+                limiter.record_result(success=False, status_code=exc.response.status_code)
+                error_msg = f"{type(exc).__name__}: {exc.response.status_code}"
                 logger.error("Poll failed for %s [%s]: %s", product_id, shop, error_msg)
 
                 await log_poll_result(
-                    state,
-                    product_id=product_id,
-                    success=False,
-                    error_message=error_msg,
+                    state, product_id=product_id, success=False, error_message=error_msg,
                 )
 
                 product = await state.get_product(product_id)
                 failures = (product.get("consecutive_failures") or 0) if product else 0
                 await send_error_alert(
-                    product_id=product_id,
-                    error_msg=error_msg,
-                    consecutive_failures=failures,
-                    product_name=p.get("name"),
-                    product_url=url,
-                    state=state,
+                    product_id=product_id, error_msg=error_msg,
+                    consecutive_failures=failures, product_name=p.get("name"),
+                    product_url=url, state=state,
+                )
+
+            except Exception as exc:
+                polled += 1
+                limiter.record_result(success=False)
+                error_msg = f"{type(exc).__name__}: {exc}"
+                logger.error("Poll failed for %s [%s]: %s", product_id, shop, error_msg)
+
+                await log_poll_result(
+                    state, product_id=product_id, success=False, error_message=error_msg,
+                )
+
+                product = await state.get_product(product_id)
+                failures = (product.get("consecutive_failures") or 0) if product else 0
+                await send_error_alert(
+                    product_id=product_id, error_msg=error_msg,
+                    consecutive_failures=failures, product_name=p.get("name"),
+                    product_url=url, state=state,
                 )
 
         # Write heartbeat after each cycle
         await write_heartbeat(state, polled)
-        await asyncio.sleep(settings.poll_interval_product)
+
+        # Use the minimum interval across all active shops' limiters
+        if products:
+            shops_in_use = {p.get("shop", "bol") for p in products}
+            interval = min(get_limiter(s).current_interval() for s in shops_in_use)
+        else:
+            interval = settings.poll_interval_product
+        await asyncio.sleep(interval)
 
 
 async def poll_categories(state: StateManager, client: httpx.AsyncClient) -> None:
