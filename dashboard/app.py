@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 from monitor.health import get_product_status, get_system_health
+from monitor.predictor import get_restock_prediction
 from monitor.state import StateManager
 
 logger = logging.getLogger(__name__)
@@ -280,11 +281,18 @@ async def product_detail(
 
     product_alerts = [a for a in alerts if a.get("product_id") == product_id]
 
+    try:
+        prediction = await get_restock_prediction(state, product_id)
+    except Exception:
+        logger.exception("Failed to get prediction for %s", product_id)
+        prediction = {"restock_count": 0, "confidence": "low"}
+
     return templates.TemplateResponse(request, "product.html", {
         "product": product,
         "poll_history": poll_history,
         "errors": errors,
         "alerts": product_alerts,
+        "prediction": prediction,
     })
 
 
