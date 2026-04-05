@@ -342,15 +342,40 @@ async def alerts_page(request: Request, state: StateManager = Depends(get_state)
 async def add_product(
     url: str = Form(...),
     name: str = Form(default=""),
+    shop: str = Form(default=""),
     state: StateManager = Depends(get_state),
 ):
-    # Extract product_id from URL
     import re
-    match = re.search(r'/(\d{10,})/', url)
-    if not match:
-        raise HTTPException(400, "Could not extract product ID from URL")
-    product_id = match.group(1)
-    await state.add_product(product_id, url, name=name or None)
+
+    # Auto-detect shop from URL if not specified
+    if not shop:
+        url_lower = url.lower()
+        if "bol.com" in url_lower:
+            shop = "bol"
+        elif "mediamarkt" in url_lower:
+            shop = "mediamarkt"
+        elif "pocketgames" in url_lower:
+            shop = "pocketgames"
+        elif "catchyourcards" in url_lower:
+            shop = "catchyourcards"
+        elif "games-island" in url_lower:
+            shop = "games_island"
+        elif "dreamland" in url_lower:
+            shop = "dreamland"
+        else:
+            shop = "bol"
+
+    # Extract product_id: numeric ID for bol/mediamarkt, slug for others
+    if shop in ("bol", "mediamarkt"):
+        match = re.search(r'/(\d{5,})(?:[/.]|$)', url)
+        if not match:
+            raise HTTPException(400, "Could not extract product ID from URL")
+        product_id = match.group(1)
+    else:
+        # Use last path segment as ID
+        product_id = url.rstrip("/").split("/")[-1]
+
+    await state.add_product(product_id, url, name=name or None, shop=shop)
     return RedirectResponse("/", status_code=303)
 
 

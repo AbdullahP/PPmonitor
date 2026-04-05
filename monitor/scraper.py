@@ -1,4 +1,8 @@
-"""HTTP fetching + HTML parsing for bol.com product pages."""
+"""HTTP fetching + HTML parsing for bol.com product pages.
+
+DEPRECATED: New code should use monitor.shops.get_adapter(shop_id) instead.
+This module is kept for backwards compatibility and existing tests.
+"""
 
 import json
 import logging

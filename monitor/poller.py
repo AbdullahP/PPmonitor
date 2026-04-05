@@ -8,9 +8,8 @@ import httpx
 
 from config import settings
 from monitor.alerts import send_error_alert, send_out_of_stock_alert, send_stock_alert
-from monitor.discovery import poll_category_pages
 from monitor.health import log_poll_result, write_heartbeat
-from monitor.scraper import fetch_product
+from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
 
 logging.basicConfig(
@@ -29,9 +28,11 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
         for p in products:
             product_id = p["product_id"]
             url = p["url"]
+            shop = p.get("shop", "bol")
 
             try:
-                data = await fetch_product(client, url)
+                adapter = get_adapter(shop)
+                data = await adapter.fetch_product(client, url)
                 polled += 1
 
                 await log_poll_result(
@@ -52,10 +53,10 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                             f"?sku={data.product_id}&offer={data.offer_uid or ''}"
                         )
                         await send_stock_alert(data, redirect_url, state=state)
-                        logger.info("STOCK CHANGE: %s → InStock", product_id)
+                        logger.info("STOCK CHANGE: %s [%s] → InStock", product_id, shop)
                     elif data.availability == "OutOfStock":
                         await send_out_of_stock_alert(data, state=state)
-                        logger.info("STOCK CHANGE: %s → OutOfStock", product_id)
+                        logger.info("STOCK CHANGE: %s [%s] → OutOfStock", product_id, shop)
 
                 # Update product state
                 await state.update_product(
@@ -71,7 +72,7 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
             except Exception as exc:
                 polled += 1
                 error_msg = f"{type(exc).__name__}: {exc}"
-                logger.error("Poll failed for %s: %s", product_id, error_msg)
+                logger.error("Poll failed for %s [%s]: %s", product_id, shop, error_msg)
 
                 await log_poll_result(
                     state,
@@ -97,14 +98,46 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
 
 
 async def poll_categories(state: StateManager, client: httpx.AsyncClient) -> None:
-    """Poll category pages for new product discovery."""
+    """Poll category pages for all shops for new product discovery."""
     while True:
-        try:
-            new_ids = await poll_category_pages(client, state)
-            if new_ids:
-                logger.info("Category poll found %d new products", len(new_ids))
-        except Exception:
-            logger.exception("Category poll cycle failed")
+        for shop_id, adapter_cls in SHOP_REGISTRY.items():
+            try:
+                adapter = adapter_cls()
+                category_urls = adapter.build_category_urls()
+
+                all_found: set[str] = set()
+                for url in category_urls:
+                    try:
+                        ids = await adapter.fetch_category(client, url)
+                        all_found.update(ids)
+                        logger.debug(
+                            "Category [%s] %s returned %d IDs", shop_id, url, len(ids)
+                        )
+                    except Exception:
+                        logger.exception("Failed to fetch category: %s", url)
+
+                if not all_found:
+                    continue
+
+                known_ids = await state.get_known_product_ids()
+                new_ids = all_found - known_ids
+
+                if new_ids:
+                    logger.info(
+                        "Discovered %d new product(s) from %s: %s",
+                        len(new_ids), shop_id, new_ids,
+                    )
+                    for pid in new_ids:
+                        product_url = adapter.build_product_url(pid)
+                        is_new = await state.add_discovered(
+                            pid, product_url, source="category", shop=shop_id
+                        )
+                        if is_new:
+                            from monitor.alerts import send_discovery_alert
+                            await send_discovery_alert(pid, product_url, state=state)
+
+            except Exception:
+                logger.exception("Category poll cycle failed for %s", shop_id)
 
         await asyncio.sleep(settings.poll_interval_category)
 
@@ -112,7 +145,7 @@ async def poll_categories(state: StateManager, client: httpx.AsyncClient) -> Non
 async def run() -> None:
     """Main entry point: start all polling tasks."""
     logger.info("Starting Pokemon TCG Stock Monitor")
-    logger.info("Target: %s", settings.bol_base_url)
+    logger.info("Shops: %s", list(SHOP_REGISTRY.keys()))
     logger.info("Product poll interval: %ds", settings.poll_interval_product)
     logger.info("Category poll interval: %ds", settings.poll_interval_category)
 

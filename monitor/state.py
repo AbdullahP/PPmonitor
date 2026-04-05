@@ -79,14 +79,16 @@ class StateManager:
 
     # ----- Products CRUD -----
 
-    async def add_product(self, product_id: str, url: str, name: str | None = None) -> dict:
+    async def add_product(
+        self, product_id: str, url: str, name: str | None = None, shop: str = "bol"
+    ) -> dict:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                """INSERT INTO products (product_id, url, name)
-                   VALUES ($1, $2, $3)
-                   ON CONFLICT (product_id) DO UPDATE SET is_active = true, url = $2
+                """INSERT INTO products (product_id, url, name, shop)
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (product_id) DO UPDATE SET is_active = true, url = $2, shop = $4
                    RETURNING *""",
-                product_id, url, name,
+                product_id, url, name, shop,
             )
             return dict(row)
 
@@ -202,15 +204,16 @@ class StateManager:
     # ----- Discovered products -----
 
     async def add_discovered(
-        self, product_id: str, url: str, name: str | None = None, source: str = "category"
+        self, product_id: str, url: str, name: str | None = None,
+        source: str = "category", shop: str = "bol",
     ) -> bool:
         """Returns True if this is a new discovery."""
         async with self._pool.acquire() as conn:
             result = await conn.execute(
-                """INSERT INTO discovered_products (product_id, url, name, source)
-                   VALUES ($1, $2, $3, $4)
+                """INSERT INTO discovered_products (product_id, url, name, source, shop)
+                   VALUES ($1, $2, $3, $4, $5)
                    ON CONFLICT (product_id) DO NOTHING""",
-                product_id, url, name, source,
+                product_id, url, name, source, shop,
             )
             return result == "INSERT 0 1"
 
