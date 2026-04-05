@@ -14,3 +14,9 @@ Phase 11: Dashboard — FastAPI + Jinja2 + HTMX + Pico CSS, HTTP Basic auth, 5 p
 Phase 12: Discord bot — /monitor add|list|remove|test slash commands
 Phase 13: Docker — 5 Dockerfiles, docker-compose.yml (prod), docker-compose.override.yml (dev)
 Phase 14: Tests — 15 tests passing (mock server, scraper, redirect), ruff clean
+Phase 15: Shop adapters — 6 adapters (bol, mediamarkt, pocketgames, catchyourcards, games_island, dreamland) with base class, Shopify fast path, registry
+Phase 16: Adapter wiring — poller + discovery use adapter registry, shop column in DB, auto-detect shop from URL
+Phase 17: Rate limiter — adaptive per-shop rate limiting with backoff (429/503), pause (403), and recovery
+Phase 18: Intelligence — upcoming sets scanner, auto-discovers products 14 days before release
+Phase 19: Predictor — restock drop prediction from poll history transitions, confidence scoring
+Phase 20: Dashboard redesign — Tailwind dark theme, sidebar nav, shop pills, rate limiter + upcoming sets sections
