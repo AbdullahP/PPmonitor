@@ -2,11 +2,12 @@
 {% block title %}Error Logs - Pokemon Monitor{% endblock %}
 {% block content %}
 
-<h2>Error Logs</h2>
+<h2 class="text-xl font-bold text-white mb-6">Error Logs</h2>
 
-<form method="GET" action="/logs" style="margin-bottom: 1rem;">
-  <div class="grid">
-    <select name="product_id">
+<form method="GET" action="/logs" class="flex gap-3 items-end mb-6">
+  <div class="min-w-[200px]">
+    <label class="block text-xs text-muted mb-1">Filter by product</label>
+    <select name="product_id" class="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none">
       <option value="">All products</option>
       {% for p in products %}
       <option value="{{ p.product_id }}" {% if selected_product == p.product_id %}selected{% endif %}>
@@ -14,30 +15,32 @@
       </option>
       {% endfor %}
     </select>
-    <button type="submit">Filter</button>
   </div>
+  <button type="submit" class="bg-accent hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition">Filter</button>
 </form>
 
-<table>
-  <thead>
-    <tr>
-      <th>Time</th>
-      <th>Product</th>
-      <th>Error</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for e in errors %}
-    <tr>
-      <td>{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
-      <td><a href="/product/{{ e.product_id }}">{{ e.product_id }}</a></td>
-      <td>{{ e.error_message or '-' }}</td>
-    </tr>
-    {% endfor %}
-    {% if not errors %}
-    <tr><td colspan="3" style="text-align:center">No errors found</td></tr>
-    {% endif %}
-  </tbody>
-</table>
+<div class="bg-card border border-border rounded-xl overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left">
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Time</th>
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Product</th>
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Error</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for e in errors %}
+      <tr class="hover:bg-bg/50 transition">
+        <td class="px-4 py-3 text-muted whitespace-nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+        <td class="px-4 py-3"><a href="/product/{{ e.product_id }}" class="text-accent hover:underline">{{ e.product_id }}</a></td>
+        <td class="px-4 py-3 text-red-400 text-xs font-mono">{{ e.error_message or '-' }}</td>
+      </tr>
+      {% endfor %}
+      {% if not errors %}
+      <tr><td colspan="3" class="px-4 py-8 text-center text-muted">No errors found</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
 
 {% endblock %}

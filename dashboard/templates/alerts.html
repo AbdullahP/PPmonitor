@@ -2,46 +2,48 @@
 {% block title %}Alerts - Pokemon Monitor{% endblock %}
 {% block content %}
 
-<h2>Alert History</h2>
+<h2 class="text-xl font-bold text-white mb-6">Alert History</h2>
 
-<table>
-  <thead>
-    <tr>
-      <th>Time</th>
-      <th>Type</th>
-      <th>Product</th>
-      <th>Message</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for a in alerts %}
-    <tr>
-      <td>{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
-      <td>
-        {% if a.alert_type == 'stock_change' %}
-          <span class="badge badge-instock">Stock</span>
-        {% elif a.alert_type == 'error' %}
-          <span class="badge badge-dead">Error</span>
-        {% elif a.alert_type == 'discovery' %}
-          <span class="badge" style="background:#cce5ff;color:#004085;">Discovery</span>
-        {% else %}
-          <span class="badge">{{ a.alert_type }}</span>
-        {% endif %}
-      </td>
-      <td>
-        {% if a.product_id %}
-          <a href="/product/{{ a.product_id }}">{{ a.product_id }}</a>
-        {% else %}
-          -
-        {% endif %}
-      </td>
-      <td>{{ a.message or '-' }}</td>
-    </tr>
-    {% endfor %}
-    {% if not alerts %}
-    <tr><td colspan="4" style="text-align:center">No alerts sent yet</td></tr>
-    {% endif %}
-  </tbody>
-</table>
+<div class="bg-card border border-border rounded-xl overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left">
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Time</th>
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Type</th>
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Product</th>
+        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Message</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for a in alerts %}
+      <tr class="hover:bg-bg/50 transition">
+        <td class="px-4 py-3 text-muted whitespace-nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+        <td class="px-4 py-3">
+          {% if a.alert_type == 'stock_change' %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">Stock</span>
+          {% elif a.alert_type == 'error' %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">Error</span>
+          {% elif a.alert_type == 'discovery' %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/20 text-accent">Discovery</span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/20 text-gray-400">{{ a.alert_type }}</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if a.product_id %}
+            <a href="/product/{{ a.product_id }}" class="text-accent hover:underline">{{ a.product_id }}</a>
+          {% else %}
+            <span class="text-muted">-</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-muted text-xs">{{ a.message or '-' }}</td>
+      </tr>
+      {% endfor %}
+      {% if not alerts %}
+      <tr><td colspan="4" class="px-4 py-8 text-center text-muted">No alerts sent yet</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
 
 {% endblock %}

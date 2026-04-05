@@ -12,7 +12,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 from monitor.health import get_product_status, get_system_health
+from monitor.intelligence import get_upcoming_sets
 from monitor.predictor import get_restock_prediction
+from monitor.rate_limiter import all_limiter_statuses
 from monitor.state import StateManager
 
 logger = logging.getLogger(__name__)
@@ -98,30 +100,32 @@ app.add_middleware(SessionAuthMiddleware)
 
 _LOGIN_HTML = """\
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login — Pokemon Monitor</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-  <style>
-    body {{ display: flex; justify-content: center; align-items: center; min-height: 100vh; }}
-    .login-card {{ max-width: 380px; width: 100%; }}
-    .error {{ color: #dc3545; font-size: 0.9em; margin-bottom: 1rem; }}
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwindcss.config={{theme:{{extend:{{colors:{{bg:'#0f1117',card:'#1a1d2e',border:'#2d3148',accent:'#3b82f6'}}}}}}}}}</script>
 </head>
-<body>
-  <article class="login-card">
-    <header><h3>Pokemon Monitor</h3></header>
+<body class="bg-bg min-h-screen flex items-center justify-center">
+  <div class="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-2xl">
+    <h2 class="text-xl font-bold text-slate-100 mb-6 text-center">Pokemon Monitor</h2>
     {error}
-    <form method="post" action="/login">
-      <label for="username">Username</label>
-      <input type="text" id="username" name="username" required autofocus>
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" required>
-      <button type="submit">Sign in</button>
+    <form method="post" action="/login" class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm text-slate-400 mb-1">Username</label>
+        <input type="text" id="username" name="username" required autofocus
+               class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-slate-100 focus:border-accent focus:outline-none">
+      </div>
+      <div>
+        <label for="password" class="block text-sm text-slate-400 mb-1">Password</label>
+        <input type="password" id="password" name="password" required
+               class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-slate-100 focus:border-accent focus:outline-none">
+      </div>
+      <button type="submit" class="w-full bg-accent hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition">Sign in</button>
     </form>
-  </article>
+  </div>
 </body>
 </html>"""
 
@@ -153,7 +157,7 @@ async def login_submit(username: str = Form(...), password: str = Form(...)):
         return response
 
     return HTMLResponse(
-        _LOGIN_HTML.format(error='<p class="error">Invalid username or password.</p>'),
+        _LOGIN_HTML.format(error='<p class="text-red-400 text-sm mb-4 text-center">Invalid username or password.</p>'),
         status_code=401,
     )
 
@@ -224,6 +228,8 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
         "sys_health": sys_health,
         "alerts_today": alerts_today,
         "discovered": discovered,
+        "rate_limiters": all_limiter_statuses(),
+        "upcoming_sets": get_upcoming_sets(),
     })
 
 

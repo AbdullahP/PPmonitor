@@ -2,101 +2,167 @@
 {% block title %}{{ product.name or product.product_id }} - Pokemon Monitor{% endblock %}
 {% block content %}
 
-<hgroup>
-  <h2>{{ product.name or product.product_id }}</h2>
-  <p>
-    <a href="{{ product.url }}" target="_blank">View on bol.com</a> |
-    Product ID: {{ product.product_id }}
-    {% if product.offer_uid %} | Offer: {{ product.offer_uid[:8] }}...{% endif %}
+<div class="mb-6">
+  <h2 class="text-xl font-bold text-white">{{ product.name or product.product_id }}</h2>
+  <p class="text-sm text-muted mt-1">
+    <a href="{{ product.url }}" target="_blank" class="text-accent hover:underline">View on store</a>
+    <span class="mx-2">|</span> ID: {{ product.product_id }}
+    {% if product.offer_uid %} <span class="mx-2">|</span> Offer: {{ product.offer_uid[:8] }}...{% endif %}
+    {% if product.get('shop') %} <span class="mx-2">|</span> Shop: {{ product.shop }}{% endif %}
   </p>
-</hgroup>
+</div>
 
-<div class="stats-bar">
-  <div class="stat-card">
-    <div class="number">
+<!-- Product stats -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-card border border-border rounded-xl p-4 text-center">
+    <div class="text-2xl font-bold">
       {% if product.last_availability == 'InStock' %}
-        <span style="color: #155724;">In Stock</span>
+        <span class="text-success">In Stock</span>
       {% elif product.last_availability == 'OutOfStock' %}
-        <span style="color: #721c24;">Out of Stock</span>
+        <span class="text-error">Out of Stock</span>
       {% else %}
-        Unknown
+        <span class="text-muted">Unknown</span>
       {% endif %}
     </div>
-    <div class="label">Availability</div>
+    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Availability</div>
   </div>
-  <div class="stat-card">
-    <div class="number">{{ ('€' + product.price) if product.price else '-' }}</div>
-    <div class="label">Price</div>
+  <div class="bg-card border border-border rounded-xl p-4 text-center">
+    <div class="text-2xl font-bold text-white">{{ ('\u20ac' + product.price) if product.price else '-' }}</div>
+    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Price</div>
   </div>
-  <div class="stat-card">
-    <div class="number">{{ product.consecutive_failures|default(0) }}</div>
-    <div class="label">Consecutive Failures</div>
+  <div class="bg-card border border-border rounded-xl p-4 text-center">
+    <div class="text-2xl font-bold {% if product.consecutive_failures|default(0) > 0 %}text-error{% else %}text-white{% endif %}">{{ product.consecutive_failures|default(0) }}</div>
+    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Consecutive Failures</div>
+  </div>
+  <div class="bg-card border border-border rounded-xl p-4 text-center">
+    <div class="text-2xl font-bold text-white">{{ prediction.restock_count|default(0) }}</div>
+    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Restocks Detected</div>
   </div>
 </div>
 
-<h3>Poll History (last {{ poll_history|default([])|length }})</h3>
-<table>
-  <thead>
-    <tr>
-      <th>Time</th>
-      <th>Success</th>
-      <th>Latency</th>
-      <th>Availability</th>
-      <th>Revision</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for poll in poll_history %}
-    <tr>
-      <td>{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
-      <td>
-        {% if poll.success %}
-          <span class="badge badge-healthy">OK</span>
-        {% else %}
-          <span class="badge badge-dead">FAIL</span>
-        {% endif %}
-      </td>
-      <td>{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
-      <td>{{ poll.availability or '-' }}</td>
-      <td>{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-{% if errors %}
-<h3>Recent Errors ({{ errors|length }})</h3>
-<table>
-  <thead>
-    <tr><th>Time</th><th>Error</th></tr>
-  </thead>
-  <tbody>
-    {% for e in errors %}
-    <tr>
-      <td>{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
-      <td>{{ e.error_message or '-' }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<!-- Restock prediction -->
+{% if prediction and prediction.restock_count|default(0) > 0 %}
+<div class="bg-card border border-border rounded-xl p-5 mb-8">
+  <h3 class="text-sm font-semibold text-white mb-3 uppercase tracking-wider">Restock Prediction</h3>
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div>
+      <div class="text-xs text-muted mb-1">Avg Interval</div>
+      <div class="text-lg font-bold text-white">{{ prediction.avg_interval_days or '-' }}{% if prediction.avg_interval_days %} days{% endif %}</div>
+    </div>
+    <div>
+      <div class="text-xs text-muted mb-1">Std Deviation</div>
+      <div class="text-lg font-bold text-white">{{ prediction.std_dev_days or '-' }}{% if prediction.std_dev_days %} days{% endif %}</div>
+    </div>
+    <div>
+      <div class="text-xs text-muted mb-1">Next Estimate</div>
+      <div class="text-lg font-bold text-white">{{ prediction.next_restock_estimate[:10] if prediction.next_restock_estimate else '-' }}</div>
+    </div>
+    <div>
+      <div class="text-xs text-muted mb-1">Confidence</div>
+      <div class="text-lg font-bold
+        {% if prediction.confidence == 'high' %}text-success{% elif prediction.confidence == 'medium' %}text-warning{% else %}text-muted{% endif %}">
+        {{ prediction.confidence|capitalize }}
+      </div>
+    </div>
+  </div>
+</div>
 {% endif %}
 
+<!-- Poll history -->
+<div class="bg-card border border-border rounded-xl overflow-hidden mb-8">
+  <div class="px-4 py-3 border-b border-border">
+    <h3 class="text-sm font-semibold text-white uppercase tracking-wider">Poll History <span class="text-muted font-normal">({{ poll_history|default([])|length }})</span></h3>
+  </div>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left">
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Time</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Success</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Latency</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Availability</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Revision</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for poll in poll_history %}
+      <tr class="hover:bg-bg/50 transition">
+        <td class="px-4 py-2 text-muted">{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
+        <td class="px-4 py-2">
+          {% if poll.success %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">OK</span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">FAIL</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-muted">{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
+        <td class="px-4 py-2 text-muted">{{ poll.availability or '-' }}</td>
+        <td class="px-4 py-2 text-muted font-mono text-xs">{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Recent errors -->
+{% if errors %}
+<div class="bg-card border border-border rounded-xl overflow-hidden mb-8">
+  <div class="px-4 py-3 border-b border-border">
+    <h3 class="text-sm font-semibold text-white uppercase tracking-wider">Recent Errors <span class="text-muted font-normal">({{ errors|length }})</span></h3>
+  </div>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left">
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Time</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Error</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for e in errors %}
+      <tr class="hover:bg-bg/50 transition">
+        <td class="px-4 py-2 text-muted whitespace-nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+        <td class="px-4 py-2 text-red-400 text-xs font-mono">{{ e.error_message or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Alert history -->
 {% if alerts %}
-<h3>Alert History</h3>
-<table>
-  <thead>
-    <tr><th>Time</th><th>Type</th><th>Message</th></tr>
-  </thead>
-  <tbody>
-    {% for a in alerts %}
-    <tr>
-      <td>{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
-      <td>{{ a.alert_type }}</td>
-      <td>{{ a.message or '-' }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="bg-card border border-border rounded-xl overflow-hidden mb-8">
+  <div class="px-4 py-3 border-b border-border">
+    <h3 class="text-sm font-semibold text-white uppercase tracking-wider">Alert History</h3>
+  </div>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border text-left">
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Time</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Type</th>
+        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Message</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for a in alerts %}
+      <tr class="hover:bg-bg/50 transition">
+        <td class="px-4 py-2 text-muted whitespace-nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+        <td class="px-4 py-2">
+          {% if a.alert_type == 'stock_change' %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">Stock</span>
+          {% elif a.alert_type == 'error' %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">Error</span>
+          {% elif a.alert_type == 'discovery' %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/20 text-accent">Discovery</span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/20 text-gray-400">{{ a.alert_type }}</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-muted text-xs">{{ a.message or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endif %}
 
 {% endblock %}

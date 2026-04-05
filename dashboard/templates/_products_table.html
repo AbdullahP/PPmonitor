@@ -1,47 +1,68 @@
-<table>
+<table class="w-full text-sm">
   <thead>
-    <tr>
-      <th>Name</th>
-      <th>Status</th>
-      <th>Availability</th>
-      <th>Price</th>
-      <th>Last Polled</th>
-      <th>Actions</th>
+    <tr class="border-b border-border text-left">
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Name</th>
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Shop</th>
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Status</th>
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Availability</th>
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Price</th>
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Last Polled</th>
+      <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
     </tr>
   </thead>
-  <tbody>
+  <tbody class="divide-y divide-border">
     {% for p in products %}
-    <tr>
-      <td><a href="/product/{{ p.product_id }}">{{ p.name or p.product_id }}</a></td>
-      <td>
+    <tr class="hover:bg-bg/50 transition">
+      <td class="px-4 py-3">
+        <a href="/product/{{ p.product_id }}" class="text-accent hover:underline font-medium">{{ p.name or p.product_id }}</a>
+      </td>
+      <td class="px-4 py-3">
+        {% set shop = p.get('shop', 'bol') if p.get is defined else 'bol' %}
+        {% if shop == 'bol' %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/20 text-orange-400">bol</span>
+        {% elif shop == 'mediamarkt' %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/20 text-red-400">mediamarkt</span>
+        {% elif shop == 'pocketgames' %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/20 text-purple-400">pocketgames</span>
+        {% elif shop == 'catchyourcards' %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-500/20 text-teal-400">catchyourcards</span>
+        {% elif shop == 'games_island' %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/20 text-sky-400">games-island</span>
+        {% elif shop == 'dreamland' %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-pink-500/20 text-pink-400">dreamland</span>
+        {% else %}
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/20 text-gray-400">{{ shop }}</span>
+        {% endif %}
+      </td>
+      <td class="px-4 py-3">
         {% if p.status == 'healthy' %}
-          <span class="badge badge-healthy">healthy</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">healthy</span>
         {% elif p.status == 'slow' %}
-          <span class="badge badge-slow">slow</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-warning/20 text-warning">slow</span>
         {% else %}
-          <span class="badge badge-dead">dead</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">dead</span>
         {% endif %}
       </td>
-      <td>
+      <td class="px-4 py-3">
         {% if p.last_availability == 'InStock' %}
-          <span class="badge badge-instock">In Stock</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">In Stock</span>
         {% elif p.last_availability == 'OutOfStock' %}
-          <span class="badge badge-outofstock">Out of Stock</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">Out of Stock</span>
         {% else %}
-          <span class="badge">Unknown</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/20 text-gray-400">Unknown</span>
         {% endif %}
       </td>
-      <td>{{ ('€' + p.price) if p.price else '-' }}</td>
-      <td>{{ p.last_polled_at.strftime('%H:%M:%S') if p.last_polled_at else 'Never' }}</td>
-      <td>
-        <form method="POST" action="/monitor/remove/{{ p.product_id }}" style="margin:0">
-          <button type="submit" class="outline secondary" style="padding:4px 12px; margin:0">Remove</button>
+      <td class="px-4 py-3 text-muted">{{ ('\u20ac' + p.price) if p.price else '-' }}</td>
+      <td class="px-4 py-3 text-muted">{{ p.last_polled_at.strftime('%H:%M:%S') if p.last_polled_at else 'Never' }}</td>
+      <td class="px-4 py-3">
+        <form method="POST" action="/monitor/remove/{{ p.product_id }}" class="inline">
+          <button type="submit" class="px-2 py-1 text-[10px] font-medium text-red-400 border border-red-400/30 rounded hover:bg-red-400/10 transition">Remove</button>
         </form>
       </td>
     </tr>
     {% endfor %}
     {% if not products %}
-    <tr><td colspan="6" style="text-align:center">No products monitored yet</td></tr>
+    <tr><td colspan="7" class="px-4 py-8 text-center text-muted">No products monitored yet</td></tr>
     {% endif %}
   </tbody>
 </table>
