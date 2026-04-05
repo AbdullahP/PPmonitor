@@ -2,45 +2,45 @@
 {% block title %}Alerts - Pokemon Monitor{% endblock %}
 {% block content %}
 
-<h2 class="text-xl font-bold text-white mb-6">Alert History</h2>
+<h2 style="font-size:1.3rem; font-weight:700; color:var(--text); margin-bottom:24px">Alert History</h2>
 
-<div class="bg-card border border-border rounded-xl overflow-hidden">
-  <table class="w-full text-sm">
+<div class="card">
+  <table>
     <thead>
-      <tr class="border-b border-border text-left">
-        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Time</th>
-        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Type</th>
-        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Product</th>
-        <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Message</th>
+      <tr>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Product</th>
+        <th>Message</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-border">
+    <tbody>
       {% for a in alerts %}
-      <tr class="hover:bg-bg/50 transition">
-        <td class="px-4 py-3 text-muted whitespace-nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
-        <td class="px-4 py-3">
+      <tr>
+        <td class="text-muted nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+        <td>
           {% if a.alert_type == 'stock_change' %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">Stock</span>
+            <span class="badge badge-green">Stock</span>
           {% elif a.alert_type == 'error' %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">Error</span>
+            <span class="badge badge-red">Error</span>
           {% elif a.alert_type == 'discovery' %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/20 text-accent">Discovery</span>
+            <span class="badge badge-blue">Discovery</span>
           {% else %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/20 text-gray-400">{{ a.alert_type }}</span>
+            <span class="badge badge-gray">{{ a.alert_type }}</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3">
+        <td>
           {% if a.product_id %}
-            <a href="/product/{{ a.product_id }}" class="text-accent hover:underline">{{ a.product_id }}</a>
+            <a href="/product/{{ a.product_id }}">{{ a.product_id }}</a>
           {% else %}
             <span class="text-muted">-</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3 text-muted text-xs">{{ a.message or '-' }}</td>
+        <td class="text-muted text-xs">{{ a.message or '-' }}</td>
       </tr>
       {% endfor %}
       {% if not alerts %}
-      <tr><td colspan="4" class="px-4 py-8 text-center text-muted">No alerts sent yet</td></tr>
+      <tr><td colspan="4" class="text-center text-muted" style="padding:32px 16px">No alerts sent yet</td></tr>
       {% endif %}
     </tbody>
   </table>

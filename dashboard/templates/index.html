@@ -3,167 +3,163 @@
 {% block content %}
 
 {% if not sys_health.monitor_alive|default(false) %}
-<div class="bg-error/20 border border-error/40 text-error px-4 py-3 rounded-lg mb-6 font-medium text-sm">
+<div class="alert-critical">
   CRITICAL: Monitor heartbeat lost — no heartbeat in last 2 minutes
 </div>
 {% endif %}
 
 <!-- Stats bar -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-3xl font-bold text-white">{{ sys_health.total_products|default(0) }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Monitored</div>
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-number">{{ sys_health.total_products|default(0) }}</div>
+    <div class="stat-label">Monitored</div>
   </div>
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-3xl font-bold text-success">{{ sys_health.healthy|default(0) }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Healthy</div>
+  <div class="stat-card">
+    <div class="stat-number" style="color: var(--success)">{{ sys_health.healthy|default(0) }}</div>
+    <div class="stat-label">Healthy</div>
   </div>
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-3xl font-bold text-error">{{ sys_health.slow|default(0) + sys_health.dead|default(0) }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Unhealthy</div>
+  <div class="stat-card">
+    <div class="stat-number" style="color: var(--error)">{{ sys_health.slow|default(0) + sys_health.dead|default(0) }}</div>
+    <div class="stat-label">Unhealthy</div>
   </div>
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-3xl font-bold text-warning">{{ alerts_today|default(0) }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Alerts Today</div>
+  <div class="stat-card">
+    <div class="stat-number" style="color: var(--warning)">{{ alerts_today|default(0) }}</div>
+    <div class="stat-label">Alerts Today</div>
   </div>
 </div>
 
 <!-- Products table -->
-<div class="mb-8">
-  <h2 class="text-lg font-semibold text-white mb-4">Monitored Products</h2>
-  <div class="bg-card border border-border rounded-xl overflow-hidden"
-       hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML">
-    {% include "_products_table.html" %}
-  </div>
+<div class="section-title">Monitored Products</div>
+<div class="card mb-0" style="margin-bottom:24px"
+     hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML">
+  {% include "_products_table.html" %}
 </div>
 
 <!-- Add product -->
-<div class="bg-card border border-border rounded-xl p-5 mb-8">
-  <h3 class="text-sm font-semibold text-white mb-3 uppercase tracking-wider">Add Product</h3>
-  <form method="POST" action="/monitor/add" class="flex gap-3 items-end flex-wrap">
-    <div class="flex-1 min-w-[200px]">
-      <label class="block text-xs text-muted mb-1">Product URL</label>
-      <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required
-             class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none">
-    </div>
-    <div class="min-w-[150px]">
-      <label class="block text-xs text-muted mb-1">Name (optional)</label>
-      <input type="text" name="name" placeholder="Product name"
-             class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none">
-    </div>
-    <div class="min-w-[130px]">
-      <label class="block text-xs text-muted mb-1">Shop</label>
-      <select name="shop" class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-accent focus:outline-none">
-        <option value="">Auto-detect</option>
-        <option value="bol">Bol.com</option>
-        <option value="mediamarkt">MediaMarkt</option>
-        <option value="pocketgames">PocketGames</option>
-        <option value="catchyourcards">CatchYourCards</option>
-        <option value="games_island">Games Island</option>
-        <option value="dreamland">Dreamland</option>
-      </select>
-    </div>
-    <button type="submit" class="bg-accent hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
-      Add Product
-    </button>
-  </form>
+<div class="card">
+  <div class="card-body">
+    <div class="section-title" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.1em">Add Product</div>
+    <form method="POST" action="/monitor/add" class="form-row">
+      <div class="form-group" style="flex:2; min-width:200px">
+        <label>Product URL</label>
+        <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required>
+      </div>
+      <div class="form-group">
+        <label>Name (optional)</label>
+        <input type="text" name="name" placeholder="Product name">
+      </div>
+      <div class="form-group" style="min-width:130px">
+        <label>Shop</label>
+        <select name="shop">
+          <option value="">Auto-detect</option>
+          <option value="bol">Bol.com</option>
+          <option value="mediamarkt">MediaMarkt</option>
+          <option value="pocketgames">PocketGames</option>
+          <option value="catchyourcards">CatchYourCards</option>
+          <option value="games_island">Games Island</option>
+          <option value="dreamland">Dreamland</option>
+        </select>
+      </div>
+      <div>
+        <button type="submit" class="btn btn-primary">Add Product</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Rate limiter status -->
 {% if rate_limiters %}
-<div class="mb-8">
-  <h2 class="text-lg font-semibold text-white mb-4">Rate Limiter Status</h2>
-  <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
-    {% for rl in rate_limiters %}
-    <div class="bg-card border border-border rounded-xl p-4">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-sm font-medium text-white">{{ rl.shop_id }}</span>
+<div class="section-title">Rate Limiter Status</div>
+<div class="grid-3">
+  {% for rl in rate_limiters %}
+  <div class="card mb-0">
+    <div class="card-body">
+      <div class="flex-between" style="margin-bottom:12px">
+        <span style="font-weight:600; color:var(--text)">{{ rl.shop_id }}</span>
         {% if rl.paused %}
-          <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-error/20 text-error">Paused {{ rl.pause_remaining }}s</span>
-        {% elif rl.ban_score > 3 %}
-          <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/20 text-warning">Throttled</span>
+          <span class="badge badge-red">Paused {{ rl.pause_remaining }}s</span>
+        {% elif rl.ban_score is defined and rl.ban_score > 3 %}
+          <span class="badge badge-amber">Throttled</span>
         {% else %}
-          <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-success/20 text-success">Normal</span>
+          <span class="badge badge-green">Normal</span>
         {% endif %}
       </div>
-      <div class="grid grid-cols-3 gap-2 text-center">
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center">
         <div>
-          <div class="text-lg font-bold text-white">{{ rl.interval }}s</div>
-          <div class="text-[10px] text-muted uppercase">Interval</div>
+          <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ rl.interval }}s</div>
+          <div style="font-size:0.6rem; color:var(--muted); text-transform:uppercase">Interval</div>
         </div>
         <div>
-          <div class="text-lg font-bold text-white">{{ rl.ban_score }}</div>
-          <div class="text-[10px] text-muted uppercase">Ban Score</div>
+          <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ rl.ban_score }}</div>
+          <div style="font-size:0.6rem; color:var(--muted); text-transform:uppercase">Ban Score</div>
         </div>
         <div>
-          <div class="text-lg font-bold text-white">{{ rl.error_rate }}%</div>
-          <div class="text-[10px] text-muted uppercase">Error Rate</div>
+          <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ rl.error_rate }}%</div>
+          <div style="font-size:0.6rem; color:var(--muted); text-transform:uppercase">Error Rate</div>
         </div>
       </div>
     </div>
-    {% endfor %}
   </div>
+  {% endfor %}
 </div>
 {% endif %}
 
 <!-- Upcoming sets -->
 {% if upcoming_sets %}
-<div class="mb-8">
-  <h2 class="text-lg font-semibold text-white mb-4">Upcoming Sets</h2>
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-    {% for s in upcoming_sets %}
-    <div class="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
+<div class="section-title">Upcoming Sets</div>
+<div class="grid-2">
+  {% for s in upcoming_sets %}
+  <div class="card mb-0">
+    <div class="card-body flex-between">
       <div>
-        <div class="text-sm font-medium text-white">{{ s.name }}</div>
-        <div class="text-xs text-muted mt-1">{{ s.release_date }} — {{ s.shops|join(', ') }}</div>
+        <div style="font-weight:500; color:var(--text)">{{ s.name }}</div>
+        <div style="font-size:0.75rem; color:var(--muted); margin-top:4px">{{ s.release_date }} — {{ s.shops|join(', ') }}</div>
       </div>
       <div class="text-right">
         {% if s.is_released %}
-          <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-success/20 text-success">Released</span>
+          <span class="badge badge-green">Released</span>
         {% elif s.is_within_window %}
-          <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/20 text-warning">{{ s.days_until_release }}d — Scanning</span>
+          <span class="badge badge-amber">{{ s.days_until_release }}d — Scanning</span>
         {% else %}
-          <span class="text-lg font-bold text-muted">{{ s.days_until_release }}d</span>
+          <span style="font-size:1.2rem; font-weight:700; color:var(--muted)">{{ s.days_until_release }}d</span>
         {% endif %}
       </div>
     </div>
-    {% endfor %}
   </div>
+  {% endfor %}
 </div>
 {% endif %}
 
 <!-- Discovered products -->
 {% if discovered %}
-<div class="mb-8">
-  <h2 class="text-lg font-semibold text-white mb-4">Discovered Products <span class="text-muted text-sm font-normal">(pending approval)</span></h2>
-  <div class="bg-card border border-border rounded-xl overflow-hidden">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-border text-left">
-          <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Product ID</th>
-          <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Source</th>
-          <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Discovered</th>
-          <th class="px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Action</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-border">
-        {% for d in discovered %}
-        <tr class="hover:bg-bg/50 transition">
-          <td class="px-4 py-3"><a href="{{ d.url }}" target="_blank" class="text-accent hover:underline">{{ d.product_id }}</a></td>
-          <td class="px-4 py-3 text-muted">{{ d.source }}</td>
-          <td class="px-4 py-3 text-muted">{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
-          <td class="px-4 py-3">
-            <form method="POST" action="/monitor/add" class="inline">
-              <input type="hidden" name="url" value="{{ d.url }}">
-              <input type="hidden" name="name" value="{{ d.name or '' }}">
-              <button type="submit" class="px-3 py-1 text-xs font-medium text-accent border border-accent/40 rounded-lg hover:bg-accent/10 transition">Monitor</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="section-title">Discovered Products <span class="section-subtitle">(pending approval)</span></div>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Product ID</th>
+        <th>Source</th>
+        <th>Discovered</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in discovered %}
+      <tr>
+        <td><a href="{{ d.url }}" target="_blank">{{ d.product_id }}</a></td>
+        <td class="text-muted">{{ d.source }}</td>
+        <td class="text-muted">{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
+        <td>
+          <form method="POST" action="/monitor/add" style="display:inline">
+            <input type="hidden" name="url" value="{{ d.url }}">
+            <input type="hidden" name="name" value="{{ d.name or '' }}">
+            <button type="submit" class="btn btn-outline">Monitor</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endif %}
 

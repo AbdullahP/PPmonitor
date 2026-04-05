@@ -2,66 +2,67 @@
 {% block title %}{{ product.name or product.product_id }} - Pokemon Monitor{% endblock %}
 {% block content %}
 
-<div class="mb-6">
-  <h2 class="text-xl font-bold text-white">{{ product.name or product.product_id }}</h2>
-  <p class="text-sm text-muted mt-1">
-    <a href="{{ product.url }}" target="_blank" class="text-accent hover:underline">View on store</a>
-    <span class="mx-2">|</span> ID: {{ product.product_id }}
-    {% if product.offer_uid %} <span class="mx-2">|</span> Offer: {{ product.offer_uid[:8] }}...{% endif %}
-    {% if product.get('shop') %} <span class="mx-2">|</span> Shop: {{ product.shop }}{% endif %}
+<div style="margin-bottom:24px">
+  <h2 style="font-size:1.3rem; font-weight:700; color:var(--text)">{{ product.name or product.product_id }}</h2>
+  <p class="text-muted text-sm" style="margin-top:6px">
+    <a href="{{ product.url }}" target="_blank">View on store</a>
+    &nbsp;|&nbsp; ID: {{ product.product_id }}
+    {% if product.offer_uid %} &nbsp;|&nbsp; Offer: {{ product.offer_uid[:8] }}...{% endif %}
+    {% if product.get('shop') %} &nbsp;|&nbsp; Shop: {{ product.shop }}{% endif %}
   </p>
 </div>
 
 <!-- Product stats -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-2xl font-bold">
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-number" style="font-size:1.5rem">
       {% if product.last_availability == 'InStock' %}
-        <span class="text-success">In Stock</span>
+        <span style="color:var(--success)">In Stock</span>
       {% elif product.last_availability == 'OutOfStock' %}
-        <span class="text-error">Out of Stock</span>
+        <span style="color:var(--error)">Out of Stock</span>
       {% else %}
         <span class="text-muted">Unknown</span>
       {% endif %}
     </div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Availability</div>
+    <div class="stat-label">Availability</div>
   </div>
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-2xl font-bold text-white">{{ ('\u20ac' + product.price) if product.price else '-' }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Price</div>
+  <div class="stat-card">
+    <div class="stat-number" style="font-size:1.5rem">{{ ('\u20ac' + product.price) if product.price else '-' }}</div>
+    <div class="stat-label">Price</div>
   </div>
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-2xl font-bold {% if product.consecutive_failures|default(0) > 0 %}text-error{% else %}text-white{% endif %}">{{ product.consecutive_failures|default(0) }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Consecutive Failures</div>
+  <div class="stat-card">
+    <div class="stat-number" style="font-size:1.5rem; {% if product.consecutive_failures|default(0) > 0 %}color:var(--error){% endif %}">{{ product.consecutive_failures|default(0) }}</div>
+    <div class="stat-label">Consecutive Failures</div>
   </div>
-  <div class="bg-card border border-border rounded-xl p-4 text-center">
-    <div class="text-2xl font-bold text-white">{{ prediction.restock_count|default(0) }}</div>
-    <div class="text-xs text-muted mt-1 uppercase tracking-wider">Restocks Detected</div>
+  <div class="stat-card">
+    <div class="stat-number" style="font-size:1.5rem">{{ prediction.restock_count|default(0) }}</div>
+    <div class="stat-label">Restocks Detected</div>
   </div>
 </div>
 
 <!-- Restock prediction -->
 {% if prediction and prediction.restock_count|default(0) > 0 %}
-<div class="bg-card border border-border rounded-xl p-5 mb-8">
-  <h3 class="text-sm font-semibold text-white mb-3 uppercase tracking-wider">Restock Prediction</h3>
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-    <div>
-      <div class="text-xs text-muted mb-1">Avg Interval</div>
-      <div class="text-lg font-bold text-white">{{ prediction.avg_interval_days or '-' }}{% if prediction.avg_interval_days %} days{% endif %}</div>
-    </div>
-    <div>
-      <div class="text-xs text-muted mb-1">Std Deviation</div>
-      <div class="text-lg font-bold text-white">{{ prediction.std_dev_days or '-' }}{% if prediction.std_dev_days %} days{% endif %}</div>
-    </div>
-    <div>
-      <div class="text-xs text-muted mb-1">Next Estimate</div>
-      <div class="text-lg font-bold text-white">{{ prediction.next_restock_estimate[:10] if prediction.next_restock_estimate else '-' }}</div>
-    </div>
-    <div>
-      <div class="text-xs text-muted mb-1">Confidence</div>
-      <div class="text-lg font-bold
-        {% if prediction.confidence == 'high' %}text-success{% elif prediction.confidence == 'medium' %}text-warning{% else %}text-muted{% endif %}">
-        {{ prediction.confidence|capitalize }}
+<div class="card">
+  <div class="card-body">
+    <div class="section-title" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.1em">Restock Prediction</div>
+    <div class="stats-grid">
+      <div>
+        <div class="text-muted text-xs">Avg Interval</div>
+        <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ prediction.avg_interval_days or '-' }}{% if prediction.avg_interval_days %} days{% endif %}</div>
+      </div>
+      <div>
+        <div class="text-muted text-xs">Std Deviation</div>
+        <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ prediction.std_dev_days or '-' }}{% if prediction.std_dev_days %} days{% endif %}</div>
+      </div>
+      <div>
+        <div class="text-muted text-xs">Next Estimate</div>
+        <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ prediction.next_restock_estimate[:10] if prediction.next_restock_estimate else '-' }}</div>
+      </div>
+      <div>
+        <div class="text-muted text-xs">Confidence</div>
+        <div style="font-size:1.1rem; font-weight:700; {% if prediction.confidence == 'high' %}color:var(--success){% elif prediction.confidence == 'medium' %}color:var(--warning){% else %}color:var(--muted){% endif %}">
+          {{ prediction.confidence|capitalize }}
+        </div>
       </div>
     </div>
   </div>
@@ -69,34 +70,35 @@
 {% endif %}
 
 <!-- Poll history -->
-<div class="bg-card border border-border rounded-xl overflow-hidden mb-8">
-  <div class="px-4 py-3 border-b border-border">
-    <h3 class="text-sm font-semibold text-white uppercase tracking-wider">Poll History <span class="text-muted font-normal">({{ poll_history|default([])|length }})</span></h3>
+<div class="card">
+  <div class="card-header">
+    <span style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--text)">Poll History</span>
+    <span class="text-muted" style="font-size:0.75rem">({{ poll_history|default([])|length }})</span>
   </div>
-  <table class="w-full text-sm">
+  <table>
     <thead>
-      <tr class="border-b border-border text-left">
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Time</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Success</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Latency</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Availability</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Revision</th>
+      <tr>
+        <th>Time</th>
+        <th>Success</th>
+        <th>Latency</th>
+        <th>Availability</th>
+        <th>Revision</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-border">
+    <tbody>
       {% for poll in poll_history %}
-      <tr class="hover:bg-bg/50 transition">
-        <td class="px-4 py-2 text-muted">{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
-        <td class="px-4 py-2">
+      <tr>
+        <td class="text-muted nowrap">{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
+        <td>
           {% if poll.success %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">OK</span>
+            <span class="badge badge-green">OK</span>
           {% else %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">FAIL</span>
+            <span class="badge badge-red">FAIL</span>
           {% endif %}
         </td>
-        <td class="px-4 py-2 text-muted">{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
-        <td class="px-4 py-2 text-muted">{{ poll.availability or '-' }}</td>
-        <td class="px-4 py-2 text-muted font-mono text-xs">{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
+        <td class="text-muted">{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
+        <td class="text-muted">{{ poll.availability or '-' }}</td>
+        <td class="text-muted text-mono">{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -105,22 +107,20 @@
 
 <!-- Recent errors -->
 {% if errors %}
-<div class="bg-card border border-border rounded-xl overflow-hidden mb-8">
-  <div class="px-4 py-3 border-b border-border">
-    <h3 class="text-sm font-semibold text-white uppercase tracking-wider">Recent Errors <span class="text-muted font-normal">({{ errors|length }})</span></h3>
+<div class="card">
+  <div class="card-header">
+    <span style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--text)">Recent Errors</span>
+    <span class="text-muted" style="font-size:0.75rem">({{ errors|length }})</span>
   </div>
-  <table class="w-full text-sm">
+  <table>
     <thead>
-      <tr class="border-b border-border text-left">
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Time</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Error</th>
-      </tr>
+      <tr><th>Time</th><th>Error</th></tr>
     </thead>
-    <tbody class="divide-y divide-border">
+    <tbody>
       {% for e in errors %}
-      <tr class="hover:bg-bg/50 transition">
-        <td class="px-4 py-2 text-muted whitespace-nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
-        <td class="px-4 py-2 text-red-400 text-xs font-mono">{{ e.error_message or '-' }}</td>
+      <tr>
+        <td class="text-muted nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+        <td style="color:var(--error)" class="text-mono">{{ e.error_message or '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -130,34 +130,30 @@
 
 <!-- Alert history -->
 {% if alerts %}
-<div class="bg-card border border-border rounded-xl overflow-hidden mb-8">
-  <div class="px-4 py-3 border-b border-border">
-    <h3 class="text-sm font-semibold text-white uppercase tracking-wider">Alert History</h3>
+<div class="card">
+  <div class="card-header">
+    <span style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--text)">Alert History</span>
   </div>
-  <table class="w-full text-sm">
+  <table>
     <thead>
-      <tr class="border-b border-border text-left">
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Time</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Type</th>
-        <th class="px-4 py-2 text-xs font-medium text-muted uppercase">Message</th>
-      </tr>
+      <tr><th>Time</th><th>Type</th><th>Message</th></tr>
     </thead>
-    <tbody class="divide-y divide-border">
+    <tbody>
       {% for a in alerts %}
-      <tr class="hover:bg-bg/50 transition">
-        <td class="px-4 py-2 text-muted whitespace-nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
-        <td class="px-4 py-2">
+      <tr>
+        <td class="text-muted nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+        <td>
           {% if a.alert_type == 'stock_change' %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-success/20 text-success">Stock</span>
+            <span class="badge badge-green">Stock</span>
           {% elif a.alert_type == 'error' %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-error/20 text-error">Error</span>
+            <span class="badge badge-red">Error</span>
           {% elif a.alert_type == 'discovery' %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/20 text-accent">Discovery</span>
+            <span class="badge badge-blue">Discovery</span>
           {% else %}
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-500/20 text-gray-400">{{ a.alert_type }}</span>
+            <span class="badge badge-gray">{{ a.alert_type }}</span>
           {% endif %}
         </td>
-        <td class="px-4 py-2 text-muted text-xs">{{ a.message or '-' }}</td>
+        <td class="text-muted text-xs">{{ a.message or '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>

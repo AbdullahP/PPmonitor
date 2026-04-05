@@ -4,65 +4,221 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Pokemon Monitor{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwindcss.config = {
-      theme: {
-        extend: {
-          colors: {
-            bg: '#0f1117',
-            card: '#1a1d2e',
-            border: '#2d3148',
-            accent: '#3b82f6',
-            success: '#22c55e',
-            warning: '#f59e0b',
-            error: '#ef4444',
-            muted: '#94a3b8',
-          }
-        }
-      }
-    }
-  </script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d2e;
+      --border: #2d3148;
+      --accent: #3b82f6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      background-color: var(--bg) !important;
+      color: var(--text) !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Layout */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      z-index: 10;
+    }
+    .sidebar-header {
+      padding: 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .logo-sub { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+    .main-content {
+      margin-left: 220px;
+      padding: 32px;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    /* Nav links */
+    .nav { flex: 1; padding: 12px; }
+    .nav-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+      transition: all 0.15s;
+    }
+    .nav-link:hover { background: rgba(59,130,246,0.1); color: var(--text); text-decoration: none; }
+    .nav-bottom { padding: 12px; border-top: 1px solid var(--border); }
+    .nav-bottom .nav-link:hover { color: var(--error); }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .card-body { padding: 20px; }
+    .card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-number { font-size: 2rem; font-weight: 700; color: var(--text); }
+    .stat-label {
+      font-size: 0.65rem; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted); margin-top: 4px;
+    }
+
+    /* Grid helpers */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+    @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th {
+      text-align: left; padding: 12px 16px;
+      font-size: 0.65rem; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted);
+      border-bottom: 1px solid var(--border); font-weight: 500;
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Badges */
+    .badge {
+      display: inline-block; padding: 3px 10px;
+      border-radius: 999px; font-size: 0.7rem; font-weight: 600;
+    }
+    .badge-green { background: #14532d; color: #22c55e; }
+    .badge-red { background: #450a0a; color: #ef4444; }
+    .badge-amber { background: #451a03; color: #f59e0b; }
+    .badge-blue { background: #1e3a5f; color: #3b82f6; }
+    .badge-gray { background: #1f2937; color: #9ca3af; }
+    .badge-orange { background: #431407; color: #fb923c; }
+    .badge-purple { background: #2e1065; color: #a78bfa; }
+    .badge-teal { background: #042f2e; color: #2dd4bf; }
+    .badge-sky { background: #0c4a6e; color: #38bdf8; }
+    .badge-pink { background: #500724; color: #f472b6; }
+
+    /* Forms */
+    input, select {
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 10px 14px;
+      border-radius: 8px; font-size: 0.85rem;
+      width: 100%; box-sizing: border-box;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    label { display: block; font-size: 0.7rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .btn {
+      display: inline-block; padding: 10px 16px;
+      border-radius: 8px; font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; border: none; text-decoration: none; color: white;
+    }
+    .btn-primary { background: var(--accent); }
+    .btn-primary:hover { background: #2563eb; text-decoration: none; }
+    .btn-danger {
+      background: transparent; border: 1px solid rgba(239,68,68,0.3);
+      color: var(--error); font-size: 0.7rem; padding: 4px 10px;
+    }
+    .btn-outline {
+      background: transparent; border: 1px solid rgba(59,130,246,0.4);
+      color: var(--accent); font-size: 0.75rem; padding: 4px 12px;
+    }
+
+    /* Form row */
+    .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .form-group { flex: 1; min-width: 150px; }
+
+    /* Section headers */
+    .section-title {
+      font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 16px;
+    }
+    .section-subtitle { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+
+    /* Alert banner */
+    .alert-critical {
+      background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3);
+      color: var(--error); padding: 12px 16px; border-radius: 8px;
+      margin-bottom: 24px; font-weight: 500; font-size: 0.85rem;
+    }
+
+    /* Flex helpers */
+    .flex-between { display: flex; align-items: center; justify-content: space-between; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-mono { font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.8rem; }
+    .text-muted { color: var(--muted); }
+    .text-sm { font-size: 0.85rem; }
+    .text-xs { font-size: 0.75rem; }
+    .mb-0 { margin-bottom: 0; }
+    .mb-8 { margin-bottom: 8px; }
+    .mt-4 { margin-top: 4px; }
+    .nowrap { white-space: nowrap; }
+
+    /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #0f1117; }
-    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   </style>
 </head>
-<body class="bg-bg text-slate-100 min-h-screen flex">
-  <!-- Sidebar -->
-  <aside class="w-[220px] bg-card border-r border-border min-h-screen fixed left-0 top-0 flex flex-col">
-    <div class="p-5 border-b border-border">
-      <h1 class="text-lg font-bold text-white tracking-tight">Pokemon Monitor</h1>
-      <p class="text-xs text-muted mt-1">TCG Stock Tracker</p>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">&#9889; Pokemon Monitor</div>
+      <div class="logo-sub">TCG Stock Tracker</div>
     </div>
-    <nav class="flex-1 p-3 space-y-1">
-      <a href="/" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-bg hover:text-white transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-        Overview
-      </a>
-      <a href="/logs" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-bg hover:text-white transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        Error Logs
-      </a>
-      <a href="/alerts" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-bg hover:text-white transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-        Alerts
-      </a>
+    <nav class="nav">
+      <a href="/" class="nav-link">&#128202; Overview</a>
+      <a href="/logs" class="nav-link">&#128203; Error Logs</a>
+      <a href="/alerts" class="nav-link">&#128276; Alerts</a>
     </nav>
-    <div class="p-3 border-t border-border">
-      <a href="/logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-red-400 transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-        Logout
-      </a>
+    <div class="nav-bottom">
+      <a href="/logout" class="nav-link">&#8617; Logout</a>
     </div>
-  </aside>
-
-  <!-- Main content -->
-  <main class="ml-[220px] flex-1 p-6 min-h-screen">
+  </div>
+  <div class="main-content">
     {% block content %}{% endblock %}
-  </main>
+  </div>
 </body>
 </html>
