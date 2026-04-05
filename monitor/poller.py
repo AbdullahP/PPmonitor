@@ -9,9 +9,12 @@ import httpx
 from config import settings
 from monitor.alerts import send_error_alert, send_out_of_stock_alert, send_stock_alert
 from monitor.health import log_poll_result, write_heartbeat
+from monitor.intelligence import scan_upcoming_sets
 from monitor.rate_limiter import get_limiter
 from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
+
+INTELLIGENCE_INTERVAL = 600  # 10 minutes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -171,6 +174,24 @@ async def poll_categories(state: StateManager, client: httpx.AsyncClient) -> Non
         await asyncio.sleep(settings.poll_interval_category)
 
 
+async def poll_intelligence(state: StateManager, client: httpx.AsyncClient) -> None:
+    """Periodically scan for upcoming sets across all shops."""
+    while True:
+        try:
+            new_finds = await scan_upcoming_sets(client, state)
+            if new_finds:
+                logger.info("Intelligence scan found %d new products", len(new_finds))
+                for find in new_finds:
+                    from monitor.alerts import send_discovery_alert
+                    await send_discovery_alert(
+                        find["product_id"], find["url"], name=find.get("name"), state=state
+                    )
+        except Exception:
+            logger.exception("Intelligence scan cycle failed")
+
+        await asyncio.sleep(INTELLIGENCE_INTERVAL)
+
+
 async def run() -> None:
     """Main entry point: start all polling tasks."""
     logger.info("Starting Pokemon TCG Stock Monitor")
@@ -185,6 +206,7 @@ async def run() -> None:
         await asyncio.gather(
             poll_products(state, client),
             poll_categories(state, client),
+            poll_intelligence(state, client),
         )
     finally:
         await client.aclose()
