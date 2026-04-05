@@ -1,6 +1,7 @@
 """PostgreSQL state management for the stock monitor."""
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -249,12 +250,12 @@ class StateManager:
 
     # ----- System heartbeat -----
 
-    async def write_heartbeat(self, products_polled_count: int) -> None:
+    async def write_heartbeat(self, products_polled_count: int, shop_status: dict | None = None) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
-                """INSERT INTO system_heartbeat (monitor_alive, products_polled_count)
-                   VALUES (true, $1)""",
-                products_polled_count,
+                """INSERT INTO system_heartbeat (monitor_alive, products_polled_count, shop_status)
+                   VALUES (true, $1, $2)""",
+                products_polled_count, json.dumps(shop_status or {}),
             )
 
     async def get_last_heartbeat(self) -> dict | None:

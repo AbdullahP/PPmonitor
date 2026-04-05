@@ -48,8 +48,8 @@ async def log_poll_result(
             )
 
 
-async def write_heartbeat(state: StateManager, products_polled_count: int) -> None:
-    await state.write_heartbeat(products_polled_count)
+async def write_heartbeat(state: StateManager, products_polled_count: int, shop_status: dict | None = None) -> None:
+    await state.write_heartbeat(products_polled_count, shop_status=shop_status)
 
 
 def get_product_status(last_polled_at: datetime | None, latency_ms: int | None) -> str:

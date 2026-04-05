@@ -1,5 +1,6 @@
-"""Admin dashboard: FastAPI + Jinja2 + HTMX + Pico CSS."""
+"""Admin dashboard: FastAPI + Jinja2 + HTMX + Tailwind."""
 
+import json as _json
 import logging
 import secrets
 from pathlib import Path
@@ -223,12 +224,20 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
             latency = None
         p["status"] = get_product_status(p.get("last_polled_at"), latency)
 
+    # Prefer shop health from heartbeat (persisted) over in-memory limiters
+    shop_health: dict = {}
+    if sys_health.get("last_heartbeat") and sys_health["last_heartbeat"].get("shop_status"):
+        raw = sys_health["last_heartbeat"]["shop_status"]
+        shop_health = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+
+    rate_limiters = list(shop_health.values()) if shop_health else all_limiter_statuses()
+
     return templates.TemplateResponse(request, "index.html", {
         "products": products,
         "sys_health": sys_health,
         "alerts_today": alerts_today,
         "discovered": discovered,
-        "rate_limiters": all_limiter_statuses(),
+        "rate_limiters": rate_limiters,
         "upcoming_sets": get_upcoming_sets(),
     })
 
