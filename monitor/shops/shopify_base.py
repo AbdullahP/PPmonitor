@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -22,6 +23,7 @@ class ShopifyAdapter(ShopAdapter):
     """
 
     category_paths: list[str] = []
+    search_path: str = "/search?q={term}&sort_by=created-descending"
 
     def _extract_handle_from_url(self, url: str) -> str | None:
         """Extract the product handle from a /products/{handle} URL."""
@@ -108,3 +110,6 @@ class ShopifyAdapter(ShopAdapter):
 
     def build_category_urls(self) -> list[str]:
         return [f"{self.base_url}{path}" for path in self.category_paths]
+
+    def get_search_url(self, term: str) -> str:
+        return f"{self.base_url}{self.search_path.format(term=quote(term))}"

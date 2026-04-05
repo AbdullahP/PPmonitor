@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 from monitor.scraper import ProductData
 from monitor.shops.base import ShopAdapter, parse_json_ld_product
@@ -70,3 +71,6 @@ class GamesIslandAdapter(ShopAdapter):
 
     def build_category_urls(self) -> list[str]:
         return [f"{self.base_url}/c/Pokemon"]
+
+    def get_search_url(self, term: str) -> str:
+        return f"{self.base_url}/search?search={quote(term)}"

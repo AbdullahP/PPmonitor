@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 from config import settings
 from monitor.scraper import ProductData
@@ -63,3 +64,6 @@ class BolAdapter(ShopAdapter):
 
     def build_category_urls(self) -> list[str]:
         return [f"{self.base_url}{path}" for path in settings.category_paths]
+
+    def get_search_url(self, term: str) -> str:
+        return f"{self.base_url}/nl/nl/s/?searchtext={quote(term)}&sortby=new_desc"

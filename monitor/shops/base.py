@@ -81,6 +81,10 @@ class ShopAdapter(ABC):
     def build_category_urls(self) -> list[str]:
         """Return all category URLs to poll for this shop."""
 
+    @abstractmethod
+    def get_search_url(self, term: str) -> str:
+        """Return the shop's search URL for a given search term."""
+
     async def fetch_product(
         self, client: httpx.AsyncClient, url: str
     ) -> ProductData:

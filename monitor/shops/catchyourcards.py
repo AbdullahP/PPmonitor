@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 from monitor.scraper import ProductData
 from monitor.shops.base import ShopAdapter
@@ -57,3 +58,6 @@ class CatchYourCardsAdapter(ShopAdapter):
 
     def build_category_urls(self) -> list[str]:
         return [f"{self.base_url}/product-category/pokemon/"]
+
+    def get_search_url(self, term: str) -> str:
+        return f"{self.base_url}/?s={quote(term)}"

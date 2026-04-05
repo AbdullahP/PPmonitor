@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import quote
 
 from monitor.scraper import ProductData
 from monitor.shops.base import ShopAdapter
@@ -80,3 +81,6 @@ class MediaMarktAdapter(ShopAdapter):
         return [
             f"{self.base_url}/nl/search.html?query=pokemon&sort=date",
         ]
+
+    def get_search_url(self, term: str) -> str:
+        return f"{self.base_url}/nl/search.html?query={quote(term)}&sort=date"

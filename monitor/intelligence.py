@@ -80,11 +80,17 @@ async def scan_upcoming_sets(
         for shop_id in set_info["shops"]:
             try:
                 adapter = get_adapter(shop_id)
-                for cat_url in adapter.build_category_urls():
+
+                # Collect URLs: category pages + search pages for each term
+                scan_urls = list(adapter.build_category_urls())
+                for term in set_info.get("search_terms", []):
+                    scan_urls.append(adapter.get_search_url(term))
+
+                for scan_url in scan_urls:
                     try:
-                        product_ids = await adapter.fetch_category(client, cat_url)
+                        product_ids = await adapter.fetch_category(client, scan_url)
                     except Exception:
-                        logger.debug("Category fetch failed for %s: %s", shop_id, cat_url)
+                        logger.debug("Scan fetch failed for %s: %s", shop_id, scan_url)
                         continue
 
                     for pid in product_ids:

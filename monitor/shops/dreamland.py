@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 from monitor.scraper import ProductData
 from monitor.shops.base import ShopAdapter, availability_from_schema_url, parse_json_ld_product
@@ -55,3 +56,6 @@ class DreamlandAdapter(ShopAdapter):
 
     def build_category_urls(self) -> list[str]:
         return [f"{self.base_url}/e/nl/catalogsearch/result/?q=pokemon"]
+
+    def get_search_url(self, term: str) -> str:
+        return f"{self.base_url}/search?q={quote(term)}"
