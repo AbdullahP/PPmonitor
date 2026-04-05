@@ -10,7 +10,7 @@ from config import settings
 from monitor.alerts import send_error_alert, send_out_of_stock_alert, send_stock_alert
 from monitor.health import log_poll_result, write_heartbeat
 from monitor.intelligence import scan_upcoming_sets
-from monitor.rate_limiter import get_limiter
+from monitor.rate_limiter import all_limiter_statuses, get_limiter
 from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
 
@@ -62,12 +62,12 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                     if data.availability == "InStock":
                         redirect_url = (
                             f"{settings.redirect_base_url}/go"
-                            f"?sku={data.product_id}&offer={data.offer_uid or ''}"
+                            f"?shop={shop}&sku={data.product_id}&offer={data.offer_uid or ''}"
                         )
-                        await send_stock_alert(data, redirect_url, state=state)
+                        await send_stock_alert(data, redirect_url, state=state, shop=shop)
                         logger.info("STOCK CHANGE: %s [%s] → InStock", product_id, shop)
                     elif data.availability == "OutOfStock":
-                        await send_out_of_stock_alert(data, state=state)
+                        await send_out_of_stock_alert(data, state=state, shop=shop)
                         logger.info("STOCK CHANGE: %s [%s] → OutOfStock", product_id, shop)
 
                 # Update product state
@@ -118,7 +118,8 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                 )
 
         # Write heartbeat after each cycle
-        await write_heartbeat(state, polled)
+        shop_status = {s["shop_id"]: s for s in all_limiter_statuses()}
+        await write_heartbeat(state, polled, shop_status=shop_status)
 
         # Use the minimum interval across all active shops' limiters
         if products:

@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 ERROR_ALERT_THRESHOLD = 3  # Fire error alert after N consecutive failures
 
+SHOP_EMOJI: dict[str, str] = {
+    "bol": "\U0001f7e0",
+    "mediamarkt": "\U0001f534",
+    "pocketgames": "\U0001f7e3",
+    "catchyourcards": "\U0001f7e1",
+    "games_island": "\U0001f7e2",
+    "dreamland": "\U0001f535",
+}
+
 
 async def _post_webhook(webhook_url: str, payload: dict) -> None:
     if not settings.discord_enabled:
@@ -28,18 +37,21 @@ async def _post_webhook(webhook_url: str, payload: dict) -> None:
 
 
 async def send_stock_alert(
-    product: ProductData, redirect_url: str, state: StateManager | None = None
+    product: ProductData,
+    redirect_url: str,
+    state: StateManager | None = None,
+    shop: str = "bol",
 ) -> None:
     """Stock available alert → public webhook with @everyone."""
+    emoji = SHOP_EMOJI.get(shop, "\U0001f7e0")
+    display_name = product.name or product.product_id
     embed = {
-        "title": f"IN STOCK: {product.name or product.product_id}",
-        "description": (
-            f"**Price:** \u20ac{product.price or '?'}\n"
-            f"**Seller:** {product.seller or 'Unknown'}"
-        ),
+        "title": f"{emoji} IN STOCK [{shop}]: {display_name}",
+        "description": f"**Seller:** {product.seller or 'Unknown'}",
         "url": redirect_url,
         "color": 0x00FF00,
         "fields": [
+            {"name": "Price", "value": f"\u20ac{product.price or '?'}", "inline": True},
             {"name": "Quick Buy", "value": f"[Add to Cart]({redirect_url})", "inline": True},
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -53,15 +65,19 @@ async def send_stock_alert(
     if state:
         msg = f"Stock alert: {product.name} - InStock - {redirect_url}"
         await state.log_alert(product.product_id, "stock_change", msg)
-    logger.info("Stock alert sent for %s", product.product_id)
+    logger.info("Stock alert sent for %s [%s]", product.product_id, shop)
 
 
 async def send_out_of_stock_alert(
-    product: ProductData, state: StateManager | None = None
+    product: ProductData,
+    state: StateManager | None = None,
+    shop: str = "bol",
 ) -> None:
     """Product went out of stock → public webhook, no ping."""
+    emoji = SHOP_EMOJI.get(shop, "\U0001f7e0")
+    display_name = product.name or product.product_id
     embed = {
-        "title": f"OUT OF STOCK: {product.name or product.product_id}",
+        "title": f"{emoji} OUT OF STOCK [{shop}]: {display_name}",
         "description": f"**Price:** \u20ac{product.price or '?'}",
         "color": 0xFF0000,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -72,7 +88,7 @@ async def send_out_of_stock_alert(
     if state:
         msg = f"OOS alert: {product.name} - OutOfStock"
         await state.log_alert(product.product_id, "stock_change", msg)
-    logger.info("Out-of-stock alert sent for %s", product.product_id)
+    logger.info("Out-of-stock alert sent for %s [%s]", product.product_id, shop)
 
 
 async def send_error_alert(
