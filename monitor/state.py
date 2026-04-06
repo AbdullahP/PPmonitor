@@ -385,6 +385,130 @@ class StateManager:
                 counts[kw_id] = count
             return counts
 
+    # ----- Shop modules -----
+
+    async def list_shop_modules(self) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM shop_modules ORDER BY sort_order, shop_id"
+            )
+            return [dict(r) for r in rows]
+
+    async def get_shop_module(self, shop_id: str) -> dict | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM shop_modules WHERE shop_id = $1", shop_id
+            )
+            return dict(row) if row else None
+
+    async def update_shop_module(self, shop_id: str, **kwargs) -> None:
+        if not kwargs:
+            return
+        sets = []
+        values = []
+        for i, (key, val) in enumerate(kwargs.items(), start=1):
+            sets.append(f"{key} = ${i}")
+            values.append(val)
+        values.append(shop_id)
+        query = f"UPDATE shop_modules SET {', '.join(sets)} WHERE shop_id = ${len(values)}"
+        async with self._pool.acquire() as conn:
+            await conn.execute(query, *values)
+
+    async def toggle_shop_module_field(self, shop_id: str, field: str) -> bool:
+        """Toggle a boolean field on a shop module. Returns new value."""
+        allowed = {"is_active", "monitoring_enabled", "discovery_enabled", "keywords_enabled"}
+        if field not in allowed:
+            raise ValueError(f"Cannot toggle field: {field}")
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"UPDATE shop_modules SET {field} = NOT {field} WHERE shop_id = $1 RETURNING {field}",
+                shop_id,
+            )
+            return row[field] if row else False
+
+    async def get_in_stock_count(self) -> int:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT COUNT(*) as cnt FROM products WHERE is_active = true AND last_availability = 'InStock'"
+            )
+            return row["cnt"]
+
+    async def get_table_counts(self) -> dict[str, int]:
+        async with self._pool.acquire() as conn:
+            tables = ["products", "poll_log", "alerts_sent", "discovered_products",
+                       "keywords", "discord_servers", "shop_modules", "webhook_log"]
+            counts = {}
+            for t in tables:
+                try:
+                    row = await conn.fetchrow(f"SELECT COUNT(*) as cnt FROM {t}")
+                    counts[t] = row["cnt"]
+                except Exception:
+                    counts[t] = 0
+            return counts
+
+    async def clear_old_poll_logs(self, days: int = 30) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                f"DELETE FROM poll_log WHERE timestamp < NOW() - INTERVAL '{days} days'"
+            )
+            return int(result.split()[-1]) if result else 0
+
+    async def clear_all_discoveries(self) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM discovered_products")
+            return int(result.split()[-1]) if result else 0
+
+    async def list_discovered_filtered(
+        self, shop: str | None = None, source: str | None = None,
+        pending_only: bool = True, limit: int = 100, offset: int = 0,
+    ) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            conditions = []
+            params = []
+            idx = 1
+            if pending_only:
+                conditions.append("promoted_at IS NULL")
+            if shop:
+                conditions.append(f"shop = ${idx}")
+                params.append(shop)
+                idx += 1
+            if source:
+                conditions.append(f"source LIKE ${idx}")
+                params.append(f"%{source}%")
+                idx += 1
+            where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            params.extend([limit, offset])
+            rows = await conn.fetch(
+                f"SELECT * FROM discovered_products {where} ORDER BY discovered_at DESC LIMIT ${idx} OFFSET ${idx + 1}",
+                *params,
+            )
+            return [dict(r) for r in rows]
+
+    async def bulk_approve_discoveries(self, product_ids: list[str]) -> int:
+        """Move discovered products to active monitoring."""
+        count = 0
+        for pid in product_ids:
+            async with self._pool.acquire() as conn:
+                disc = await conn.fetchrow(
+                    "SELECT * FROM discovered_products WHERE product_id = $1", pid
+                )
+                if disc:
+                    await self.add_product(
+                        pid, disc["url"], name=disc.get("name"),
+                        shop=disc.get("shop", "bol"),
+                    )
+                    await self.promote_discovered(pid)
+                    count += 1
+        return count
+
+    async def delete_discoveries(self, product_ids: list[str]) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM discovered_products WHERE product_id = ANY($1)",
+                product_ids,
+            )
+            return int(result.split()[-1]) if result else 0
+
     # ----- Discord servers -----
 
     async def list_discord_servers(self, active_only: bool = False) -> list[dict]:

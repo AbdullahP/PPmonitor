@@ -1,19 +1,19 @@
-"""Admin dashboard: FastAPI + Jinja2 + HTMX + Tailwind."""
+"""Admin dashboard: FastAPI + Jinja2 + HTMX."""
 
-import json as _json
 import logging
 import secrets
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 from monitor.health import get_product_status, get_system_health
-from monitor.intelligence import get_upcoming_sets
 from monitor.predictor import get_restock_prediction
 from monitor.rate_limiter import all_limiter_statuses
 from monitor.state import StateManager
@@ -25,13 +25,12 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 _state: StateManager | None = None
 _signer = URLSafeTimedSerializer(settings.dashboard_secret_key)
+_start_time = datetime.now(timezone.utc)
 
 SESSION_COOKIE = "dashboard_session"
-SESSION_MAX_AGE = 86400  # 24 hours
-
+SESSION_MAX_AGE = 86400
 PUBLIC_PATHS = {"/health", "/login", "/logout"}
 
-# Safe-default dict for get_system_health when it fails
 _EMPTY_HEALTH = {
     "monitor_alive": False,
     "total_products": 0,
@@ -39,6 +38,13 @@ _EMPTY_HEALTH = {
     "slow": 0,
     "dead": 0,
     "last_heartbeat": None,
+}
+
+SHOP_EMOJI = {
+    "bol": "\U0001f7e0", "mediamarkt": "\U0001f534",
+    "pocketgames": "\U0001f7e3", "catchyourcards": "\U0001f7e1",
+    "games_island": "\U0001f7e2", "dreamland": "\U0001f535",
+    "amazon_uk": "\U0001f4e6",
 }
 
 
@@ -73,22 +79,15 @@ def verify_session_cookie(value: str) -> str | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Auth middleware — skipped entirely when DASHBOARD_AUTH_ENABLED=false
-# ---------------------------------------------------------------------------
-
 class SessionAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not settings.dashboard_auth_enabled:
             return await call_next(request)
-
         if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
-
         cookie = request.cookies.get(SESSION_COOKIE)
         if cookie and verify_session_cookie(cookie):
             return await call_next(request)
-
         return RedirectResponse("/login", status_code=303)
 
 
@@ -98,7 +97,6 @@ app.add_middleware(SessionAuthMiddleware)
 # ---------------------------------------------------------------------------
 # Login / Logout
 # ---------------------------------------------------------------------------
-
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -111,21 +109,16 @@ async def login_page(request: Request):
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if not settings.dashboard_auth_enabled:
         return RedirectResponse("/", status_code=303)
-
     if (
         secrets.compare_digest(username, settings.dashboard_user)
         and secrets.compare_digest(password, settings.dashboard_pass)
     ):
         response = RedirectResponse("/", status_code=303)
         response.set_cookie(
-            SESSION_COOKIE,
-            create_session_cookie(username),
-            max_age=SESSION_MAX_AGE,
-            httponly=True,
-            samesite="lax",
+            SESSION_COOKIE, create_session_cookie(username),
+            max_age=SESSION_MAX_AGE, httponly=True, samesite="lax",
         )
         return response
-
     return templates.TemplateResponse(
         request, "login.html",
         {"error_block": '<div class="error">Invalid username or password</div>'},
@@ -156,7 +149,7 @@ async def health(state: StateManager = Depends(get_state)):
 
 
 # ---------------------------------------------------------------------------
-# Test webhooks API
+# API endpoints
 # ---------------------------------------------------------------------------
 
 @app.post("/api/test-webhook")
@@ -166,17 +159,11 @@ async def api_test_webhook(state: StateManager = Depends(get_state)):
 
 
 # ---------------------------------------------------------------------------
-# Overview page
+# Overview (stripped down)
 # ---------------------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, state: StateManager = Depends(get_state)):
-    try:
-        products = await state.list_products(active_only=True)
-    except Exception:
-        logger.exception("Failed to list products")
-        products = []
-
     try:
         sys_health = await get_system_health(state)
     except Exception:
@@ -186,57 +173,148 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
     try:
         alerts_today = await state.get_alerts_today_count()
     except Exception:
-        logger.exception("Failed to get alerts today count")
         alerts_today = 0
 
     try:
-        discovered = await state.list_discovered(pending_only=True)
+        modules = await state.list_shop_modules()
     except Exception:
-        logger.exception("Failed to list discovered products")
-        discovered = []
-
-    # Enrich products with status badge
-    for p in products:
-        try:
-            last_poll = await state.get_poll_history(p["product_id"], limit=1)
-            latency = last_poll[0]["latency_ms"] if last_poll else None
-        except Exception:
-            latency = None
-        p["status"] = get_product_status(p.get("last_polled_at"), latency)
-
-    # Prefer shop health from heartbeat (persisted) over in-memory limiters
-    shop_health: dict = {}
-    if sys_health.get("last_heartbeat") and sys_health["last_heartbeat"].get("shop_status"):
-        raw = sys_health["last_heartbeat"]["shop_status"]
-        shop_health = _json.loads(raw) if isinstance(raw, str) else (raw or {})
-
-    rate_limiters = list(shop_health.values()) if shop_health else all_limiter_statuses()
+        modules = []
 
     try:
-        discord_servers = await state.list_discord_servers(active_only=False)
+        in_stock = await state.get_in_stock_count()
     except Exception:
-        logger.exception("Failed to list discord servers")
-        discord_servers = []
+        in_stock = 0
+
+    try:
+        recent_alerts = await state.get_alerts(limit=10)
+    except Exception:
+        recent_alerts = []
+
+    active_modules = sum(1 for m in modules if m.get("is_active"))
 
     return templates.TemplateResponse(request, "index.html", {
         "active_page": "overview",
-        "products": products,
         "sys_health": sys_health,
         "alerts_today": alerts_today,
-        "discovered": discovered,
-        "rate_limiters": rate_limiters,
-        "upcoming_sets": get_upcoming_sets(),
-        "discord_servers": discord_servers,
+        "modules": modules,
+        "active_modules": active_modules,
+        "in_stock": in_stock,
+        "recent_alerts": recent_alerts,
     })
 
 
-# HTMX partial: just the products table body
-@app.get("/partials/products", response_class=HTMLResponse)
-async def partial_products(request: Request, state: StateManager = Depends(get_state)):
+# ---------------------------------------------------------------------------
+# Modules
+# ---------------------------------------------------------------------------
+
+@app.get("/modules", response_class=HTMLResponse)
+async def modules_page(request: Request, state: StateManager = Depends(get_state)):
+    try:
+        modules = await state.list_shop_modules()
+    except Exception:
+        logger.exception("Failed to list shop modules")
+        modules = []
+
+    rate_limiters = {s["shop_id"]: s for s in all_limiter_statuses()}
+
+    return templates.TemplateResponse(request, "modules.html", {
+        "active_page": "modules",
+        "modules": modules,
+        "rate_limiters": rate_limiters,
+        "shop_emoji": SHOP_EMOJI,
+    })
+
+
+@app.post("/modules/{shop_id}/toggle/{field}")
+async def toggle_module_field(shop_id: str, field: str, state: StateManager = Depends(get_state)):
+    await state.toggle_shop_module_field(shop_id, field)
+    return RedirectResponse("/modules", status_code=303)
+
+
+@app.post("/modules/{shop_id}/test")
+async def test_module(shop_id: str, state: StateManager = Depends(get_state)):
+    import httpx
+    from monitor.shops.registry import get_adapter
+
+    try:
+        adapter = get_adapter(shop_id)
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Fetch category page to find a product
+            urls = adapter.build_category_urls()
+            product_ids: set[str] = set()
+            for url in urls[:1]:
+                try:
+                    product_ids = await adapter.fetch_category(client, url)
+                except Exception:
+                    pass
+                if product_ids:
+                    break
+
+            if not product_ids:
+                await state.update_shop_module(
+                    shop_id,
+                    last_test_at=datetime.now(timezone.utc),
+                    last_test_result="fail",
+                    last_test_error="No products found on category page",
+                )
+                return JSONResponse({"ok": False, "error": "No products found on category page"})
+
+            # Test first product
+            pid = next(iter(product_ids))
+            product_url = adapter.build_product_url(pid)
+            data = await adapter.fetch_product(client, product_url)
+
+            result = {
+                "ok": True,
+                "name": data.name or "",
+                "price": data.price or "",
+                "availability": data.availability or "",
+                "product_id": data.product_id or pid,
+                "error": None,
+            }
+
+            is_certified = bool(data.name and data.price and data.availability != "Unknown")
+            now = datetime.now(timezone.utc)
+            update = {
+                "last_test_at": now,
+                "last_test_result": "pass",
+                "last_test_error": None,
+                "last_test_name": data.name,
+                "last_test_price": data.price,
+                "last_test_avail": data.availability,
+            }
+            if is_certified:
+                update["is_certified"] = True
+                update["certified_at"] = now
+
+            await state.update_shop_module(shop_id, **update)
+            return JSONResponse(result)
+
+    except Exception as exc:
+        error_msg = f"{type(exc).__name__}: {exc}"
+        await state.update_shop_module(
+            shop_id,
+            last_test_at=datetime.now(timezone.utc),
+            last_test_result="fail",
+            last_test_error=error_msg[:500],
+        )
+        return JSONResponse({"ok": False, "error": error_msg[:200]})
+
+
+# ---------------------------------------------------------------------------
+# Products
+# ---------------------------------------------------------------------------
+
+@app.get("/products", response_class=HTMLResponse)
+async def products_page(
+    request: Request,
+    shop: str = Query(default=""),
+    availability: str = Query(default=""),
+    state: StateManager = Depends(get_state),
+):
     try:
         products = await state.list_products(active_only=True)
     except Exception:
-        logger.exception("Failed to list products")
         products = []
 
     for p in products:
@@ -247,9 +325,83 @@ async def partial_products(request: Request, state: StateManager = Depends(get_s
             latency = None
         p["status"] = get_product_status(p.get("last_polled_at"), latency)
 
-    return templates.TemplateResponse(request, "_products_table.html", {
+    # Apply filters
+    if shop:
+        products = [p for p in products if p.get("shop") == shop]
+    if availability:
+        products = [p for p in products if p.get("last_availability") == availability]
+
+    return templates.TemplateResponse(request, "products.html", {
+        "active_page": "products",
         "products": products,
+        "filter_shop": shop,
+        "filter_availability": availability,
     })
+
+
+# HTMX partial: just the products table body
+@app.get("/partials/products", response_class=HTMLResponse)
+async def partial_products(request: Request, state: StateManager = Depends(get_state)):
+    try:
+        products = await state.list_products(active_only=True)
+    except Exception:
+        products = []
+
+    for p in products:
+        try:
+            last_poll = await state.get_poll_history(p["product_id"], limit=1)
+            latency = last_poll[0]["latency_ms"] if last_poll else None
+        except Exception:
+            latency = None
+        p["status"] = get_product_status(p.get("last_polled_at"), latency)
+
+    return templates.TemplateResponse(request, "_products_table.html", {"products": products})
+
+
+@app.post("/monitor/add")
+async def add_product(
+    url: str = Form(...),
+    name: str = Form(default=""),
+    shop: str = Form(default=""),
+    state: StateManager = Depends(get_state),
+):
+    import re
+
+    if not shop:
+        url_lower = url.lower()
+        shop_map = [
+            ("bol.com", "bol"), ("mediamarkt", "mediamarkt"),
+            ("pocketgames", "pocketgames"), ("catchyourcards", "catchyourcards"),
+            ("games-island", "games_island"), ("dreamland", "dreamland"),
+            ("amazon.co.uk", "amazon_uk"),
+        ]
+        shop = "bol"
+        for pattern, shop_id in shop_map:
+            if pattern in url_lower:
+                shop = shop_id
+                break
+
+    if shop in ("bol", "mediamarkt"):
+        match = re.search(r'/(\d{5,})(?:[/.]|$)', url)
+        if not match:
+            raise HTTPException(400, "Could not extract product ID from URL")
+        product_id = match.group(1)
+    elif shop == "amazon_uk":
+        match = re.search(r'/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)', url)
+        if not match:
+            raise HTTPException(400, "Could not extract ASIN from Amazon URL")
+        product_id = match.group(1)
+    else:
+        product_id = url.rstrip("/").split("/")[-1]
+
+    await state.add_product(product_id, url, name=name or None, shop=shop)
+    return RedirectResponse("/products", status_code=303)
+
+
+@app.post("/monitor/remove/{product_id}")
+async def remove_product(product_id: str, state: StateManager = Depends(get_state)):
+    await state.remove_product(product_id)
+    return RedirectResponse("/products", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -267,37 +419,90 @@ async def product_detail(
     try:
         poll_history = await state.get_poll_history(product_id, limit=100)
     except Exception:
-        logger.exception("Failed to get poll history for %s", product_id)
         poll_history = []
-
     try:
         errors = await state.get_recent_errors(product_id, limit=20)
     except Exception:
-        logger.exception("Failed to get recent errors for %s", product_id)
         errors = []
-
     try:
         alerts = await state.get_alerts(limit=50)
     except Exception:
-        logger.exception("Failed to get alerts")
         alerts = []
-
     product_alerts = [a for a in alerts if a.get("product_id") == product_id]
-
     try:
         prediction = await get_restock_prediction(state, product_id)
     except Exception:
-        logger.exception("Failed to get prediction for %s", product_id)
         prediction = {"restock_count": 0, "confidence": "low"}
 
     return templates.TemplateResponse(request, "product.html", {
-        "active_page": "overview",
+        "active_page": "products",
         "product": product,
         "poll_history": poll_history,
         "errors": errors,
         "alerts": product_alerts,
         "prediction": prediction,
     })
+
+
+# ---------------------------------------------------------------------------
+# Discoveries
+# ---------------------------------------------------------------------------
+
+@app.get("/discoveries", response_class=HTMLResponse)
+async def discoveries_page(
+    request: Request,
+    shop: str = Query(default=""),
+    source: str = Query(default=""),
+    state: StateManager = Depends(get_state),
+):
+    try:
+        discovered = await state.list_discovered_filtered(
+            shop=shop or None, source=source or None,
+            pending_only=True, limit=200,
+        )
+    except Exception:
+        logger.exception("Failed to list discoveries")
+        discovered = []
+
+    return templates.TemplateResponse(request, "discoveries.html", {
+        "active_page": "discoveries",
+        "discovered": discovered,
+        "filter_shop": shop,
+        "filter_source": source,
+    })
+
+
+@app.post("/discoveries/approve")
+async def approve_discoveries(
+    product_ids: list[str] = Form(default=[]),
+    state: StateManager = Depends(get_state),
+):
+    if product_ids:
+        await state.bulk_approve_discoveries(product_ids)
+    return RedirectResponse("/discoveries", status_code=303)
+
+
+@app.post("/discoveries/delete")
+async def delete_discoveries_action(
+    product_ids: list[str] = Form(default=[]),
+    state: StateManager = Depends(get_state),
+):
+    if product_ids:
+        await state.delete_discoveries(product_ids)
+    return RedirectResponse("/discoveries", status_code=303)
+
+
+@app.post("/discoveries/approve-pokemon")
+async def approve_pokemon_discoveries(state: StateManager = Depends(get_state)):
+    from monitor.intelligence import is_pokemon_product
+    discovered = await state.list_discovered(pending_only=True)
+    pokemon_ids = [
+        d["product_id"] for d in discovered
+        if d.get("name") and is_pokemon_product(d["name"])
+    ]
+    if pokemon_ids:
+        await state.bulk_approve_discoveries(pokemon_ids)
+    return RedirectResponse("/discoveries", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -313,19 +518,14 @@ async def logs_page(
     try:
         errors = await state.get_recent_errors(product_id, limit=100)
     except Exception:
-        logger.exception("Failed to get recent errors")
         errors = []
-
     try:
         products = await state.list_products(active_only=False)
     except Exception:
-        logger.exception("Failed to list products")
         products = []
-
     try:
         webhook_errors = await state.get_webhook_errors(limit=50)
     except Exception:
-        logger.exception("Failed to get webhook errors")
         webhook_errors = []
 
     return templates.TemplateResponse(request, "logs.html", {
@@ -346,7 +546,6 @@ async def alerts_page(request: Request, state: StateManager = Depends(get_state)
     try:
         alerts = await state.get_alerts(limit=200)
     except Exception:
-        logger.exception("Failed to get alerts")
         alerts = []
 
     return templates.TemplateResponse(request, "alerts.html", {
@@ -364,13 +563,10 @@ async def keywords_page(request: Request, state: StateManager = Depends(get_stat
     try:
         keywords = await state.list_keywords(active_only=False)
     except Exception:
-        logger.exception("Failed to list keywords")
         keywords = []
-
     try:
         match_counts = await state.get_keyword_match_counts()
     except Exception:
-        logger.exception("Failed to get keyword match counts")
         match_counts = {}
 
     return templates.TemplateResponse(request, "keywords.html", {
@@ -391,15 +587,11 @@ async def add_keyword(
     state: StateManager = Depends(get_state),
 ):
     all_shops = ["bol", "mediamarkt", "pocketgames",
-                 "catchyourcards", "games_island", "dreamland"]
+                 "catchyourcards", "games_island", "dreamland", "amazon_uk"]
     selected_shops = shops if shops else all_shops
     await state.add_keyword(
-        keyword=keyword,
-        match_type=match_type,
-        priority=priority,
-        shops=selected_shops,
-        auto_monitor=auto_monitor,
-        notes=notes or None,
+        keyword=keyword, match_type=match_type, priority=priority,
+        shops=selected_shops, auto_monitor=auto_monitor, notes=notes or None,
     )
     return RedirectResponse("/keywords", status_code=303)
 
@@ -425,7 +617,6 @@ async def discord_page(request: Request, state: StateManager = Depends(get_state
     try:
         servers = await state.list_discord_servers(active_only=False)
     except Exception:
-        logger.exception("Failed to list discord servers")
         servers = []
 
     return templates.TemplateResponse(request, "discord.html", {
@@ -450,17 +641,12 @@ async def add_discord_server(
     state: StateManager = Depends(get_state),
 ):
     await state.add_discord_server(
-        name=name,
-        description=description or None,
-        public_webhook=public_webhook or None,
-        admin_webhook=admin_webhook or None,
+        name=name, description=description or None,
+        public_webhook=public_webhook or None, admin_webhook=admin_webhook or None,
         discovery_webhook=discovery_webhook or None,
-        bot_token=bot_token or None,
-        channel_id=channel_id or None,
-        send_stock_alerts=send_stock_alerts,
-        send_discovery_alerts=send_discovery_alerts,
-        send_admin_alerts=send_admin_alerts,
-        send_queue_alerts=send_queue_alerts,
+        bot_token=bot_token or None, channel_id=channel_id or None,
+        send_stock_alerts=send_stock_alerts, send_discovery_alerts=send_discovery_alerts,
+        send_admin_alerts=send_admin_alerts, send_queue_alerts=send_queue_alerts,
     )
     return RedirectResponse("/discord", status_code=303)
 
@@ -484,7 +670,6 @@ async def test_discord_server(server_id: int, state: StateManager = Depends(get_
         raise HTTPException(404, "Server not found")
 
     from monitor.alerts import test_server_webhooks
-    from datetime import datetime, timezone
 
     results = await test_server_webhooks(server, state=state)
 
@@ -506,63 +691,56 @@ async def test_discord_server(server_id: int, state: StateManager = Depends(get_
         last_test_result=test_result,
         last_test_error=test_error,
     )
-
     return results
 
 
 # ---------------------------------------------------------------------------
-# Add / remove product
+# System
 # ---------------------------------------------------------------------------
 
-@app.post("/monitor/add")
-async def add_product(
-    url: str = Form(...),
-    name: str = Form(default=""),
-    shop: str = Form(default=""),
-    state: StateManager = Depends(get_state),
-):
-    import re
+@app.get("/system", response_class=HTMLResponse)
+async def system_page(request: Request, state: StateManager = Depends(get_state)):
+    try:
+        sys_health = await get_system_health(state)
+    except Exception:
+        sys_health = _EMPTY_HEALTH
 
-    # Auto-detect shop from URL if not specified
-    if not shop:
-        url_lower = url.lower()
-        if "bol.com" in url_lower:
-            shop = "bol"
-        elif "mediamarkt" in url_lower:
-            shop = "mediamarkt"
-        elif "pocketgames" in url_lower:
-            shop = "pocketgames"
-        elif "catchyourcards" in url_lower:
-            shop = "catchyourcards"
-        elif "games-island" in url_lower:
-            shop = "games_island"
-        elif "dreamland" in url_lower:
-            shop = "dreamland"
-        elif "amazon.co.uk" in url_lower:
-            shop = "amazon_uk"
-        else:
-            shop = "bol"
+    try:
+        table_counts = await state.get_table_counts()
+    except Exception:
+        table_counts = {}
 
-    # Extract product_id: numeric ID for bol/mediamarkt, ASIN for Amazon, slug for others
-    if shop in ("bol", "mediamarkt"):
-        match = re.search(r'/(\d{5,})(?:[/.]|$)', url)
-        if not match:
-            raise HTTPException(400, "Could not extract product ID from URL")
-        product_id = match.group(1)
-    elif shop == "amazon_uk":
-        match = re.search(r'/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)', url)
-        if not match:
-            raise HTTPException(400, "Could not extract ASIN from Amazon URL")
-        product_id = match.group(1)
-    else:
-        # Use last path segment as ID
-        product_id = url.rstrip("/").split("/")[-1]
+    import subprocess
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        git_hash = "unknown"
 
-    await state.add_product(product_id, url, name=name or None, shop=shop)
-    return RedirectResponse("/", status_code=303)
+    uptime_seconds = int((datetime.now(timezone.utc) - _start_time).total_seconds())
+    uptime_str = f"{uptime_seconds // 3600}h {(uptime_seconds % 3600) // 60}m"
+
+    return templates.TemplateResponse(request, "system.html", {
+        "active_page": "system",
+        "sys_health": sys_health,
+        "table_counts": table_counts,
+        "git_hash": git_hash,
+        "python_version": sys.version.split()[0],
+        "uptime": uptime_str,
+        "poll_interval_product": settings.poll_interval_product,
+        "poll_interval_category": settings.poll_interval_category,
+    })
 
 
-@app.post("/monitor/remove/{product_id}")
-async def remove_product(product_id: str, state: StateManager = Depends(get_state)):
-    await state.remove_product(product_id)
-    return RedirectResponse("/", status_code=303)
+@app.post("/system/clear-poll-logs")
+async def clear_poll_logs(state: StateManager = Depends(get_state)):
+    await state.clear_old_poll_logs(days=30)
+    return RedirectResponse("/system", status_code=303)
+
+
+@app.post("/system/clear-discoveries")
+async def clear_discoveries(state: StateManager = Depends(get_state)):
+    await state.clear_all_discoveries()
+    return RedirectResponse("/system", status_code=303)

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Discoveries - Pokémon Monitor{% endblock %}
+{% block page_title %}Discoveries{% endblock %}
+{% block content %}
+
+<!-- Filters + bulk actions -->
+<div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px; flex-wrap:wrap; gap:12px">
+  <form method="GET" action="/discoveries" style="display:flex; gap:12px; align-items:flex-end">
+    <div style="min-width:140px">
+      <label>Shop</label>
+      <select name="shop">
+        <option value="">All shops</option>
+        <option value="bol" {% if filter_shop == 'bol' %}selected{% endif %}>bol.com</option>
+        <option value="mediamarkt" {% if filter_shop == 'mediamarkt' %}selected{% endif %}>MediaMarkt</option>
+        <option value="pocketgames" {% if filter_shop == 'pocketgames' %}selected{% endif %}>PocketGames</option>
+        <option value="amazon_uk" {% if filter_shop == 'amazon_uk' %}selected{% endif %}>Amazon UK</option>
+      </select>
+    </div>
+    <div style="min-width:140px">
+      <label>Source</label>
+      <select name="source">
+        <option value="">All sources</option>
+        <option value="category" {% if filter_source == 'category' %}selected{% endif %}>Category</option>
+        <option value="keyword" {% if filter_source == 'keyword' %}selected{% endif %}>Keyword</option>
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary" style="padding:10px 24px">Filter</button>
+    </div>
+  </form>
+  <form method="POST" action="/discoveries/approve-pokemon" style="display:inline">
+    <button type="submit" class="btn-monitor">Approve All Pokémon</button>
+  </form>
+</div>
+
+<!-- Discoveries Table -->
+<form id="discoveries-form">
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Pending Discoveries</span>
+    <span class="card-header-sub">{{ discovered|length }} items</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:30px"><input type="checkbox" id="select-all" style="width:auto; padding:0" onclick="toggleAll(this)"></th>
+        <th>Product ID</th>
+        <th>Name</th>
+        <th>Shop</th>
+        <th>Source</th>
+        <th>Discovered</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in discovered %}
+      <tr>
+        <td><input type="checkbox" name="product_ids" value="{{ d.product_id }}" class="disc-cb" style="width:auto; padding:0"></td>
+        <td style="font-family:'SF Mono','Consolas',monospace; font-size:0.7rem">
+          <a href="{{ d.url }}" target="_blank">{{ d.product_id[:16] }}{% if d.product_id|length > 16 %}...{% endif %}</a>
+        </td>
+        <td style="font-size:0.8rem">{{ d.name or '-' }}</td>
+        <td>
+          {% set shop = d.get('shop', 'bol') if d.get is defined else 'bol' %}
+          {% if shop == 'bol' %}
+            <span class="pill pill--tertiary">bol.com</span>
+          {% elif shop == 'amazon_uk' %}
+            <span class="pill pill--tertiary">amazon.co.uk</span>
+          {% elif shop == 'mediamarkt' %}
+            <span class="pill pill--error">mediamarkt</span>
+          {% else %}
+            <span class="pill pill--gray">{{ shop }}</span>
+          {% endif %}
+        </td>
+        <td class="text-xs text-muted">{{ d.source or '-' }}</td>
+        <td class="text-xs text-muted nowrap">{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
+        <td>
+          <form method="POST" action="/monitor/add" style="display:inline">
+            <input type="hidden" name="url" value="{{ d.url }}">
+            <input type="hidden" name="name" value="{{ d.name or '' }}">
+            <button type="submit" class="btn-monitor">Monitor</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not discovered %}
+      <tr><td colspan="7" class="text-center text-muted" style="padding:32px 24px">No pending discoveries</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+</form>
+
+{% if discovered %}
+<div style="display:flex; gap:8px; margin-top:16px">
+  <button onclick="bulkAction('/discoveries/approve')" class="btn-monitor">Approve Selected</button>
+  <button onclick="bulkAction('/discoveries/delete')" class="btn-danger" style="font-size:0.75rem; padding:6px 12px">Delete Selected</button>
+</div>
+{% endif %}
+
+<script>
+function toggleAll(el) {
+  document.querySelectorAll('.disc-cb').forEach(cb => cb.checked = el.checked);
+}
+function bulkAction(url) {
+  const checked = document.querySelectorAll('.disc-cb:checked');
+  if (!checked.length) return;
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = url;
+  checked.forEach(cb => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'product_ids';
+    input.value = cb.value;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+}
+</script>
+
+{% endblock %}

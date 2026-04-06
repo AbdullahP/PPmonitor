@@ -12,234 +12,70 @@
 <!-- Stats bar -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-number">{{ sys_health.total_products|default(0) }}</div>
-    <div class="stat-label stat-label--default">Monitored</div>
+    <div class="stat-number">{{ active_modules }}</div>
+    <div class="stat-label stat-label--default">Active Modules</div>
   </div>
   <div class="stat-card stat-card--primary">
-    <div class="stat-number">{{ sys_health.healthy|default(0) }}</div>
-    <div class="stat-label stat-label--primary">Healthy</div>
-  </div>
-  <div class="stat-card stat-card--error">
-    <div class="stat-number">{{ sys_health.slow|default(0) + sys_health.dead|default(0) }}</div>
-    <div class="stat-label stat-label--error">Unhealthy</div>
+    <div class="stat-number">{{ sys_health.total_products|default(0) }}</div>
+    <div class="stat-label stat-label--primary">Products Monitored</div>
   </div>
   <div class="stat-card stat-card--tertiary">
+    <div class="stat-number">{{ in_stock }}</div>
+    <div class="stat-label stat-label--tertiary">In Stock Now</div>
+  </div>
+  <div class="stat-card stat-card--error">
     <div class="stat-number">{{ alerts_today|default(0) }}</div>
-    <div class="stat-label stat-label--tertiary">Alerts Today</div>
+    <div class="stat-label stat-label--error">Alerts Today</div>
   </div>
 </div>
 
-<!-- Monitored Products Table -->
+<!-- Module status strip -->
 <div class="card">
-  <div class="card-header">
-    <span class="card-header-title">Monitored Products</span>
-    <span class="card-header-sub">Real-time polling active</span>
-  </div>
-  <div hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML">
-    {% include "_products_table.html" %}
-  </div>
-</div>
-
-<!-- Add Product -->
-<div class="card">
-  <div class="card-body">
-    <div class="section-title">Add Product</div>
-    <form method="POST" action="/monitor/add">
-      <div class="form-grid">
-        <div>
-          <label>Product URL</label>
-          <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required>
-        </div>
-        <div>
-          <label>Product Name</label>
-          <input type="text" name="name" placeholder="Display Name">
-        </div>
-        <div>
-          <label>Retailer</label>
-          <select name="shop">
-            <option value="">Auto-detect</option>
-            <option value="bol">bol.com</option>
-            <option value="mediamarkt">MediaMarkt</option>
-            <option value="pocketgames">PocketGames</option>
-            <option value="catchyourcards">CatchYourCards</option>
-            <option value="games_island">Games Island</option>
-            <option value="dreamland">Dreamland</option>
-            <option value="amazon_uk">Amazon UK</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:flex; justify-content:flex-end; margin-top:16px">
-        <button type="submit" class="btn btn-primary">Add Product</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Discord Status -->
-<div class="card">
-  <div class="card-body">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
-      <div class="section-title" style="margin-bottom:0">Discord Status</div>
-      <div style="display:flex; gap:8px">
-        <button onclick="testWebhooks(this)" class="btn-monitor">Test All</button>
-        <a href="/discord" class="btn-monitor" style="text-decoration:none">Manage</a>
-      </div>
-    </div>
-    {% if discord_servers %}
-    <div style="display:flex; flex-direction:column; gap:8px">
-      {% for s in discord_servers %}
-      <div class="rl-card{% if s.last_test_result == 'failed' %} rl-card--paused{% elif s.last_test_result == 'ok' %}{% else %} rl-card--throttled{% endif %}"{% if not s.is_active %} style="opacity:0.5"{% endif %}>
-        <div>
-          <div class="rl-shop">{{ s.name }}</div>
-          <div class="rl-detail">
-            {% if s.public_webhook %}&#10003; Public{% endif %}
-            {% if s.admin_webhook %} &#10003; Admin{% endif %}
-            {% if s.discovery_webhook %} &#10003; Discovery{% endif %}
-          </div>
-        </div>
-        <div style="text-align:right">
-          {% if s.last_test_result == 'ok' %}
-            <span style="color:var(--primary); font-size:1rem">&#10003;</span>
-            <div class="rl-detail">{{ s.last_tested_at.strftime('%H:%M') if s.last_tested_at else '' }}</div>
-          {% elif s.last_test_result == 'failed' %}
-            <span style="color:var(--error); font-size:1rem">&#10007;</span>
-            <div class="rl-detail" style="color:var(--error)">Failed</div>
-          {% else %}
-            <span style="color:var(--outline); font-size:1rem">?</span>
-            <div class="rl-detail">Untested</div>
-          {% endif %}
-        </div>
-      </div>
+  <div class="card-body" style="padding:16px 24px">
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+      <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--outline); margin-right:8px">Shops</span>
+      {% for m in modules %}
+      <a href="/modules" style="text-decoration:none">
+        <span class="pill {% if m.is_active %}pill--primary{% else %}pill--gray{% endif %}" style="font-size:11px; padding:4px 10px">
+          {{ m.display_name }}
+          {% if m.is_active and m.is_certified %}&#10003;{% elif not m.is_active %}&#9208;{% endif %}
+        </span>
+      </a>
       {% endfor %}
     </div>
-    {% else %}
-    <div class="text-muted text-xs" style="padding:8px 0">No Discord servers configured. <a href="/discord">Add one</a> or they will be seeded from env vars on next restart.</div>
-    {% endif %}
-    <div id="webhook-test-result" style="margin-top:12px"></div>
   </div>
 </div>
-<script>
-async function testWebhooks(btn) {
-  btn.disabled = true;
-  btn.textContent = 'Testing...';
-  const el = document.getElementById('webhook-test-result');
-  try {
-    const resp = await fetch('/api/test-webhook', {method: 'POST'});
-    const data = await resp.json();
-    let html = '';
-    for (const [server, results] of Object.entries(data)) {
-      html += '<div style="margin-bottom:8px"><strong style="font-size:0.75rem">' + server + '</strong><div style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-top:4px">';
-      for (const [key, val] of Object.entries(results)) {
-        if (!val.configured) continue;
-        const color = val.ok ? 'var(--primary)' : 'var(--error)';
-        const icon = val.ok ? '&#10003;' : '&#10007;';
-        const detail = val.ok ? 'HTTP ' + val.status : (val.error || 'Failed').substring(0, 30);
-        html += '<div style="padding:4px 8px; background:var(--surface-low); border-radius:4px; font-size:0.7rem">';
-        html += '<span style="color:' + color + '">' + icon + '</span> ' + key + ' <span style="color:var(--outline)">' + detail + '</span></div>';
-      }
-      html += '</div></div>';
-    }
-    el.innerHTML = html || '<span class="text-muted" style="font-size:0.75rem">No servers to test</span>';
-    setTimeout(() => location.reload(), 3000);
-  } catch (e) {
-    el.innerHTML = '<div style="color:var(--error); font-size:0.75rem">Test failed: ' + e.message + '</div>';
-  }
-  btn.disabled = false;
-  btn.textContent = 'Test All';
-}
-</script>
 
-<!-- Two-column layout: Rate Limiter + Upcoming Sets -->
-<div class="grid-2">
-  <!-- Rate Limiter Status -->
-  {% if rate_limiters %}
-  <div class="card mb-0">
-    <div class="card-body">
-      <div class="section-title">Rate Limiter Status</div>
-      <div style="display:flex; flex-direction:column; gap:12px">
-        {% for rl in rate_limiters %}
-        <div class="rl-card{% if rl.paused %} rl-card--paused{% elif rl.ban_score is defined and rl.ban_score > 3 %} rl-card--throttled{% endif %}">
-          <div>
-            <div class="rl-shop">{{ rl.shop_id }}</div>
-            <div class="rl-detail">Polling interval: {{ rl.interval }}s</div>
-          </div>
-          <div style="text-align:right">
-            <div class="rl-score {% if rl.paused %}rl-score--error{% elif rl.ban_score is defined and rl.ban_score > 3 %}rl-score--tertiary{% else %}rl-score--primary{% endif %}">Score: {{ rl.ban_score }}</div>
-            <div class="rl-detail">
-              {% if rl.paused %}Paused {{ rl.pause_remaining }}s
-              {% elif rl.ban_score is defined and rl.ban_score > 3 %}Throttled
-              {% else %}Stable{% endif %}
-            </div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- Upcoming Set Launches -->
-  {% if upcoming_sets %}
-  <div class="card mb-0">
-    <div class="card-body">
-      <div class="section-title">Upcoming Set Launches</div>
-      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px">
-        {% for s in upcoming_sets %}
-        <div class="countdown-card{% if not s.is_released and s.is_within_window %}" style="border:1px solid rgba(173,198,255,0.1){% endif %}">
-          {% if s.is_released %}
-            <div class="countdown-number" style="color:var(--tertiary)">&#10003;</div>
-            <div class="countdown-name">{{ s.name }}</div>
-            <div class="countdown-date">Released</div>
-          {% else %}
-            <div class="countdown-number">{{ s.days_until_release }}d</div>
-            <div class="countdown-name">{{ s.name }}</div>
-            <div class="countdown-date">Expected: {{ s.release_date }}</div>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-      <div class="info-box">
-        <span class="material-symbols-outlined">info</span>
-        <p>Observatory scanning for early retailer listings on {{ upcoming_sets|length * 7 }} specialized domains.</p>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-</div>
-
-<!-- Discovered Products -->
-{% if discovered %}
+<!-- Recent Activity -->
 <div class="card">
   <div class="card-header">
-    <span class="card-header-title">Auto-Discovered Products</span>
+    <span class="card-header-title">Recent Activity</span>
+    <a href="/alerts" class="card-header-sub" style="text-decoration:none">View all &rarr;</a>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Source Category</th>
-        <th>Discovered Time</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for d in discovered %}
-      <tr>
-        <td style="font-family:'SF Mono','Consolas',monospace; font-size:0.75rem"><a href="{{ d.url }}" target="_blank">{{ d.product_id }}</a></td>
-        <td class="text-xs">{{ d.source }}</td>
-        <td class="text-xs text-muted">{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
-        <td>
-          <form method="POST" action="/monitor/add" style="display:inline">
-            <input type="hidden" name="url" value="{{ d.url }}">
-            <input type="hidden" name="name" value="{{ d.name or '' }}">
-            <button type="submit" class="btn-monitor">Monitor</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% if recent_alerts %}
+  <div style="padding:8px 0">
+    {% for a in recent_alerts %}
+    <div style="padding:8px 24px; font-size:0.8rem; border-bottom:1px solid rgba(66,71,84,0.08)">
+      <span class="text-muted" style="font-family:'SF Mono','Consolas',monospace; font-size:0.7rem">{{ a.timestamp.strftime('%H:%M') if a.timestamp else '' }}</span>
+      &nbsp;—&nbsp;
+      {% if a.alert_type == 'stock_change' %}
+        <span class="pill pill--primary" style="font-size:8px">stock</span>
+      {% elif a.alert_type == 'error' %}
+        <span class="pill pill--error" style="font-size:8px">error</span>
+      {% elif a.alert_type == 'discovery' %}
+        <span class="pill pill--sky" style="font-size:8px">discovery</span>
+      {% elif a.alert_type == 'queue' %}
+        <span class="pill pill--tertiary" style="font-size:8px">queue</span>
+      {% else %}
+        <span class="pill pill--gray" style="font-size:8px">{{ a.alert_type }}</span>
+      {% endif %}
+      <span style="color:var(--on-surface)">{{ (a.message or '-')[:80] }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center text-muted" style="padding:32px 24px">No recent activity</div>
+  {% endif %}
 </div>
-{% endif %}
 
 {% endblock %}

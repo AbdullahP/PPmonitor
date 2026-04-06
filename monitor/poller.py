@@ -31,10 +31,21 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
         products = await state.list_products(active_only=True)
         polled = 0
 
+        # Cache module states for this cycle
+        try:
+            _modules = {m["shop_id"]: m for m in await state.list_shop_modules()}
+        except Exception:
+            _modules = {}
+
         for p in products:
             product_id = p["product_id"]
             url = p["url"]
             shop = p.get("shop", "bol")
+
+            # Skip if shop module is disabled or monitoring is off
+            mod = _modules.get(shop)
+            if mod and (not mod.get("is_active") or not mod.get("monitoring_enabled")):
+                continue
 
             limiter = get_limiter(shop)
 
@@ -119,6 +130,22 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                     product_url=url, state=state,
                 )
 
+        # Update per-shop module stats
+        for shop_id in {p.get("shop", "bol") for p in products}:
+            try:
+                lim = get_limiter(shop_id)
+                stats = lim.status_dict()
+                update = {
+                    "last_poll_at": datetime.now(timezone.utc),
+                    "success_rate_pct": int(100 - stats.get("error_rate", 0)),
+                    "avg_latency_ms": 0,
+                }
+                if stats.get("total_errors") and stats.get("total_requests"):
+                    update["last_error_at"] = datetime.now(timezone.utc)
+                await state.update_shop_module(shop_id, **update)
+            except Exception:
+                pass
+
         # Write heartbeat after each cycle
         shop_status = {s["shop_id"]: s for s in all_limiter_statuses()}
         await write_heartbeat(state, polled, shop_status=shop_status)
@@ -135,7 +162,17 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
 async def poll_categories(state: StateManager, client: httpx.AsyncClient) -> None:
     """Poll category pages for all shops for new product discovery."""
     while True:
+        try:
+            _modules = {m["shop_id"]: m for m in await state.list_shop_modules()}
+        except Exception:
+            _modules = {}
+
         for shop_id, adapter_cls in SHOP_REGISTRY.items():
+            # Skip if shop module has discovery disabled
+            mod = _modules.get(shop_id)
+            if mod and (not mod.get("is_active") or not mod.get("discovery_enabled")):
+                continue
+
             try:
                 adapter = adapter_cls()
                 category_urls = adapter.build_category_urls()

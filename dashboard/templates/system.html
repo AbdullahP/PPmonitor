@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}System - Pokémon Monitor{% endblock %}
+{% block page_title %}System{% endblock %}
+{% block content %}
+
+<!-- Service Health -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Service Health</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px">
+      <div class="rl-card{% if sys_health.monitor_alive %}" style="border-left-color:var(--primary){% else %} rl-card--paused{% endif %}">
+        <div>
+          <div class="rl-shop">Monitor</div>
+          <div class="rl-detail">
+            {% if sys_health.monitor_alive %}
+              Heartbeat OK
+            {% else %}
+              No heartbeat
+            {% endif %}
+          </div>
+        </div>
+        <div style="text-align:right">
+          {% if sys_health.monitor_alive %}
+            <span style="color:var(--primary); font-size:1.2rem">&#10003;</span>
+          {% else %}
+            <span style="color:var(--error); font-size:1.2rem">&#10007;</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="rl-card">
+        <div>
+          <div class="rl-shop">Dashboard</div>
+          <div class="rl-detail">Running</div>
+        </div>
+        <div style="text-align:right">
+          <span style="color:var(--primary); font-size:1.2rem">&#10003;</span>
+        </div>
+      </div>
+      <div class="rl-card">
+        <div>
+          <div class="rl-shop">Database</div>
+          <div class="rl-detail">Connected</div>
+        </div>
+        <div style="text-align:right">
+          <span style="color:var(--primary); font-size:1.2rem">&#10003;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Poller Configuration -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Poller Configuration</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px">
+      <div>
+        <label>Product Poll Interval</label>
+        <div style="font-size:1.1rem; font-weight:700; color:#fff">{{ poll_interval_product }}s</div>
+      </div>
+      <div>
+        <label>Category Poll Interval</label>
+        <div style="font-size:1.1rem; font-weight:700; color:#fff">{{ poll_interval_category }}s</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Database Stats -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Database Stats</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px">
+      {% for table_name, count in table_counts.items() %}
+      <div style="text-align:center; padding:12px; background:var(--surface-low); border-radius:8px">
+        <div style="font-size:1.2rem; font-weight:700; color:#fff">{{ count }}</div>
+        <div style="font-size:9px; color:var(--outline); text-transform:uppercase; margin-top:2px">{{ table_name }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex; gap:8px">
+      <form method="POST" action="/system/clear-poll-logs" style="display:inline">
+        <button type="submit" class="btn-monitor">Clear Poll Logs (&gt;30d)</button>
+      </form>
+      <form method="POST" action="/system/clear-discoveries" style="display:inline">
+        <button type="submit" class="btn-danger" style="font-size:0.75rem; padding:6px 12px">Clear All Discoveries</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- System Info -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">System Info</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px">
+      <div>
+        <label>Git Commit</label>
+        <div style="font-family:'SF Mono','Consolas',monospace; font-size:0.85rem; color:#fff">{{ git_hash }}</div>
+      </div>
+      <div>
+        <label>Python</label>
+        <div style="font-size:0.85rem; color:#fff">{{ python_version }}</div>
+      </div>
+      <div>
+        <label>Uptime</label>
+        <div style="font-size:0.85rem; color:#fff">{{ uptime }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

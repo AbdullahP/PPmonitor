@@ -361,21 +361,37 @@
         <span class="material-symbols-outlined">dashboard</span>
         Overview
       </a>
+      <a href="/modules" class="nav-link {% if active_page == 'modules' %}active{% endif %}">
+        <span class="material-symbols-outlined">extension</span>
+        Modules
+      </a>
+      <a href="/products" class="nav-link {% if active_page == 'products' %}active{% endif %}">
+        <span class="material-symbols-outlined">inventory_2</span>
+        Products
+      </a>
+      <a href="/discoveries" class="nav-link {% if active_page == 'discoveries' %}active{% endif %}">
+        <span class="material-symbols-outlined">explore</span>
+        Discoveries
+      </a>
       <a href="/keywords" class="nav-link {% if active_page == 'keywords' %}active{% endif %}">
         <span class="material-symbols-outlined">key</span>
         Keywords
       </a>
       <a href="/discord" class="nav-link {% if active_page == 'discord' %}active{% endif %}">
-        <span class="material-symbols-outlined">notifications_active</span>
+        <span class="material-symbols-outlined">forum</span>
         Discord
-      </a>
-      <a href="/logs" class="nav-link {% if active_page == 'logs' %}active{% endif %}">
-        <span class="material-symbols-outlined">assessment</span>
-        Error Logs
       </a>
       <a href="/alerts" class="nav-link {% if active_page == 'alerts' %}active{% endif %}">
         <span class="material-symbols-outlined">notifications_active</span>
         Alerts
+      </a>
+      <a href="/logs" class="nav-link {% if active_page == 'logs' %}active{% endif %}">
+        <span class="material-symbols-outlined">assessment</span>
+        Logs
+      </a>
+      <a href="/system" class="nav-link {% if active_page == 'system' %}active{% endif %}">
+        <span class="material-symbols-outlined">settings</span>
+        System
       </a>
     </nav>
     <div class="sidebar-bottom">

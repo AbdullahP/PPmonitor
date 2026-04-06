@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Products - Pokémon Monitor{% endblock %}
+{% block page_title %}Products{% endblock %}
+{% block content %}
+
+<!-- Filters -->
+<form method="GET" action="/products" style="display:flex; gap:12px; align-items:flex-end; margin-bottom:24px">
+  <div style="min-width:140px">
+    <label>Shop</label>
+    <select name="shop">
+      <option value="">All shops</option>
+      <option value="bol" {% if filter_shop == 'bol' %}selected{% endif %}>bol.com</option>
+      <option value="mediamarkt" {% if filter_shop == 'mediamarkt' %}selected{% endif %}>MediaMarkt</option>
+      <option value="pocketgames" {% if filter_shop == 'pocketgames' %}selected{% endif %}>PocketGames</option>
+      <option value="catchyourcards" {% if filter_shop == 'catchyourcards' %}selected{% endif %}>CatchYourCards</option>
+      <option value="games_island" {% if filter_shop == 'games_island' %}selected{% endif %}>Games Island</option>
+      <option value="dreamland" {% if filter_shop == 'dreamland' %}selected{% endif %}>Dreamland</option>
+      <option value="amazon_uk" {% if filter_shop == 'amazon_uk' %}selected{% endif %}>Amazon UK</option>
+    </select>
+  </div>
+  <div style="min-width:140px">
+    <label>Availability</label>
+    <select name="availability">
+      <option value="">All</option>
+      <option value="InStock" {% if filter_availability == 'InStock' %}selected{% endif %}>In Stock</option>
+      <option value="OutOfStock" {% if filter_availability == 'OutOfStock' %}selected{% endif %}>Out of Stock</option>
+    </select>
+  </div>
+  <div>
+    <button type="submit" class="btn btn-primary" style="padding:10px 24px">Filter</button>
+  </div>
+</form>
+
+<!-- Products Table -->
+<div class="card" hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML" hx-target="#products-body">
+  <div class="card-header">
+    <span class="card-header-title">Monitored Products</span>
+    <span class="card-header-sub">{{ products|length }} products</span>
+  </div>
+  <div id="products-body">
+    {% include "_products_table.html" %}
+  </div>
+</div>
+
+<!-- Add Product -->
+<div class="card">
+  <div class="card-body">
+    <div class="section-title">Add Product</div>
+    <form method="POST" action="/monitor/add">
+      <div class="form-grid">
+        <div>
+          <label>Product URL</label>
+          <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required>
+        </div>
+        <div>
+          <label>Product Name</label>
+          <input type="text" name="name" placeholder="Display Name">
+        </div>
+        <div>
+          <label>Retailer</label>
+          <select name="shop">
+            <option value="">Auto-detect</option>
+            <option value="bol">bol.com</option>
+            <option value="mediamarkt">MediaMarkt</option>
+            <option value="pocketgames">PocketGames</option>
+            <option value="catchyourcards">CatchYourCards</option>
+            <option value="games_island">Games Island</option>
+            <option value="dreamland">Dreamland</option>
+            <option value="amazon_uk">Amazon UK</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin-top:16px">
+        <button type="submit" class="btn btn-primary">Add Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

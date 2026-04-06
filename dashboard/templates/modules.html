@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Modules - Pokémon Monitor{% endblock %}
+{% block page_title %}Modules{% endblock %}
+{% block content %}
+
+<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:24px">
+  {% for m in modules %}
+  {% set rl = rate_limiters.get(m.shop_id, {}) %}
+  <div class="card mb-0" style="border-left:4px solid {% if m.is_certified and m.is_active %}var(--primary){% elif m.is_active %}var(--tertiary){% else %}var(--outline-variant){% endif %}{% if not m.is_active %}; opacity:0.6{% endif %}">
+    <div class="card-body">
+      <!-- Header -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <span style="font-size:1.2rem">{{ shop_emoji.get(m.shop_id, '🔵') }}</span>
+          <span style="font-weight:700; font-size:0.95rem">{{ m.display_name }}</span>
+        </div>
+        <div style="display:flex; gap:4px">
+          {% if m.is_certified %}
+            <span class="pill pill--primary">Certified</span>
+          {% endif %}
+          {% if m.is_active %}
+            <span class="status status--healthy"><span class="status-dot"></span> on</span>
+          {% else %}
+            <span class="status status--dead"><span class="status-dot"></span> off</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Sub-module toggles -->
+      <div style="display:flex; gap:6px; margin-bottom:12px">
+        <form method="POST" action="/modules/{{ m.shop_id }}/toggle/monitoring_enabled" style="display:inline">
+          <button type="submit" class="pill {% if m.monitoring_enabled %}pill--primary{% else %}pill--gray{% endif %}" style="cursor:pointer; border:none; font-family:inherit; padding:4px 10px">
+            {% if m.monitoring_enabled %}&#10003;{% else %}&#10007;{% endif %} Monitor
+          </button>
+        </form>
+        <form method="POST" action="/modules/{{ m.shop_id }}/toggle/discovery_enabled" style="display:inline">
+          <button type="submit" class="pill {% if m.discovery_enabled %}pill--primary{% else %}pill--gray{% endif %}" style="cursor:pointer; border:none; font-family:inherit; padding:4px 10px">
+            {% if m.discovery_enabled %}&#10003;{% else %}&#10007;{% endif %} Discover
+          </button>
+        </form>
+        <form method="POST" action="/modules/{{ m.shop_id }}/toggle/keywords_enabled" style="display:inline">
+          <button type="submit" class="pill {% if m.keywords_enabled %}pill--primary{% else %}pill--gray{% endif %}" style="cursor:pointer; border:none; font-family:inherit; padding:4px 10px">
+            {% if m.keywords_enabled %}&#10003;{% else %}&#10007;{% endif %} Keywords
+          </button>
+        </form>
+      </div>
+
+      <!-- Stats -->
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px">
+        <div style="text-align:center">
+          <div style="font-size:1rem; font-weight:700; color:#fff">{{ m.success_rate_pct }}%</div>
+          <div style="font-size:9px; color:var(--outline); text-transform:uppercase">Success</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1rem; font-weight:700; color:#fff">{{ m.avg_latency_ms }}ms</div>
+          <div style="font-size:9px; color:var(--outline); text-transform:uppercase">Latency</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1rem; font-weight:700; color:#fff">{{ rl.get('interval', '-') }}{% if rl.get('interval') %}s{% endif %}</div>
+          <div style="font-size:9px; color:var(--outline); text-transform:uppercase">Interval</div>
+        </div>
+      </div>
+
+      <!-- Last test result -->
+      {% if m.last_test_result == 'pass' %}
+      <div style="padding:8px; background:var(--surface-low); border-radius:6px; font-size:0.7rem; margin-bottom:12px">
+        <span style="color:var(--primary)">&#10003; Last test passed</span>
+        {% if m.last_test_name %} — {{ m.last_test_name[:40] }}{% endif %}
+        {% if m.last_test_price %} ({{ m.last_test_price }}){% endif %}
+        {% if m.last_test_avail %} [{{ m.last_test_avail }}]{% endif %}
+      </div>
+      {% elif m.last_test_result == 'fail' %}
+      <div style="padding:8px; background:var(--surface-low); border-radius:6px; font-size:0.7rem; margin-bottom:12px; color:var(--error)">
+        &#10007; Test failed: {{ (m.last_test_error or '-')[:80] }}
+      </div>
+      {% endif %}
+
+      {% if m.last_error_msg %}
+      <div style="font-size:0.65rem; color:var(--error); margin-bottom:8px; font-family:'SF Mono','Consolas',monospace">
+        {{ m.last_error_msg[:80] }}
+      </div>
+      {% endif %}
+
+      <!-- Actions -->
+      <div style="display:flex; gap:8px; align-items:center">
+        <button onclick="testModule('{{ m.shop_id }}', this)" class="btn-monitor">Test Scraper</button>
+        <a href="/logs" class="btn-monitor" style="text-decoration:none">Logs</a>
+        <form method="POST" action="/modules/{{ m.shop_id }}/toggle/is_active" style="display:inline">
+          <button type="submit" class="btn-monitor">
+            {% if m.is_active %}Disable{% else %}Enable{% endif %}
+          </button>
+        </form>
+        <span id="test-{{ m.shop_id }}" style="font-size:0.7rem; margin-left:4px"></span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+async function testModule(shopId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+  const el = document.getElementById('test-' + shopId);
+  try {
+    const resp = await fetch('/modules/' + shopId + '/test', {method: 'POST'});
+    const data = await resp.json();
+    if (data.ok) {
+      el.innerHTML = '<span style="color:var(--primary)">&#10003; ' + (data.name || 'OK').substring(0, 30) + '</span>';
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      el.innerHTML = '<span style="color:var(--error)">&#10007; ' + (data.error || 'Failed').substring(0, 40) + '</span>';
+    }
+  } catch (e) {
+    el.innerHTML = '<span style="color:var(--error)">' + e.message + '</span>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Test Scraper';
+}
+</script>
+
+{% endblock %}
