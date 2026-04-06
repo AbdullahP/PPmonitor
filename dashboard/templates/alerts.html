@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Alerts - Pokemon Monitor{% endblock %}
+{% block title %}Alerts - Pokémon Monitor{% endblock %}
+{% block page_title %}Alert History{% endblock %}
 {% block content %}
-
-<h2 style="font-size:1.3rem; font-weight:700; color:var(--text); margin-bottom:24px">Alert History</h2>
 
 <div class="card">
   <table>
@@ -17,16 +16,16 @@
     <tbody>
       {% for a in alerts %}
       <tr>
-        <td class="text-muted nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+        <td class="text-muted nowrap text-xs">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
         <td>
           {% if a.alert_type == 'stock_change' %}
-            <span class="badge badge-green">Stock</span>
+            <span class="pill pill--primary">Stock</span>
           {% elif a.alert_type == 'error' %}
-            <span class="badge badge-red">Error</span>
+            <span class="pill pill--error">Error</span>
           {% elif a.alert_type == 'discovery' %}
-            <span class="badge badge-blue">Discovery</span>
+            <span class="pill pill--sky">Discovery</span>
           {% else %}
-            <span class="badge badge-gray">{{ a.alert_type }}</span>
+            <span class="pill pill--gray">{{ a.alert_type }}</span>
           {% endif %}
         </td>
         <td>
@@ -40,7 +39,7 @@
       </tr>
       {% endfor %}
       {% if not alerts %}
-      <tr><td colspan="4" class="text-center text-muted" style="padding:32px 16px">No alerts sent yet</td></tr>
+      <tr><td colspan="4" class="text-center text-muted" style="padding:32px 24px">No alerts sent yet</td></tr>
       {% endif %}
     </tbody>
   </table>

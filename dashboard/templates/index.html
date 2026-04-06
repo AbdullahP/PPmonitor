@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Overview - Pokemon Monitor{% endblock %}
+{% block title %}Overview - Pokémon Monitor{% endblock %}
+{% block page_title %}Overview{% endblock %}
 {% block content %}
 
 {% if not sys_health.monitor_alive|default(false) %}
@@ -12,148 +13,151 @@
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-number">{{ sys_health.total_products|default(0) }}</div>
-    <div class="stat-label">Monitored</div>
+    <div class="stat-label stat-label--default">Monitored</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-number" style="color: var(--success)">{{ sys_health.healthy|default(0) }}</div>
-    <div class="stat-label">Healthy</div>
+  <div class="stat-card stat-card--primary">
+    <div class="stat-number">{{ sys_health.healthy|default(0) }}</div>
+    <div class="stat-label stat-label--primary">Healthy</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-number" style="color: var(--error)">{{ sys_health.slow|default(0) + sys_health.dead|default(0) }}</div>
-    <div class="stat-label">Unhealthy</div>
+  <div class="stat-card stat-card--error">
+    <div class="stat-number">{{ sys_health.slow|default(0) + sys_health.dead|default(0) }}</div>
+    <div class="stat-label stat-label--error">Unhealthy</div>
   </div>
-  <div class="stat-card">
-    <div class="stat-number" style="color: var(--warning)">{{ alerts_today|default(0) }}</div>
-    <div class="stat-label">Alerts Today</div>
+  <div class="stat-card stat-card--tertiary">
+    <div class="stat-number">{{ alerts_today|default(0) }}</div>
+    <div class="stat-label stat-label--tertiary">Alerts Today</div>
   </div>
 </div>
 
-<!-- Products table -->
-<div class="section-title">Monitored Products</div>
-<div class="card mb-0" style="margin-bottom:24px"
-     hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML">
-  {% include "_products_table.html" %}
+<!-- Monitored Products Table -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Monitored Products</span>
+    <span class="card-header-sub">Real-time polling active</span>
+  </div>
+  <div hx-get="/partials/products" hx-trigger="every 10s" hx-swap="innerHTML">
+    {% include "_products_table.html" %}
+  </div>
 </div>
 
-<!-- Add product -->
+<!-- Add Product -->
 <div class="card">
   <div class="card-body">
-    <div class="section-title" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.1em">Add Product</div>
-    <form method="POST" action="/monitor/add" class="form-row">
-      <div class="form-group" style="flex:2; min-width:200px">
-        <label>Product URL</label>
-        <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required>
+    <div class="section-title">Add Product</div>
+    <form method="POST" action="/monitor/add">
+      <div class="form-grid">
+        <div>
+          <label>Product URL</label>
+          <input type="url" name="url" placeholder="https://www.bol.com/nl/nl/p/..." required>
+        </div>
+        <div>
+          <label>Product Name</label>
+          <input type="text" name="name" placeholder="Display Name">
+        </div>
+        <div>
+          <label>Retailer</label>
+          <select name="shop">
+            <option value="">Auto-detect</option>
+            <option value="bol">bol.com</option>
+            <option value="mediamarkt">MediaMarkt</option>
+            <option value="pocketgames">PocketGames</option>
+            <option value="catchyourcards">CatchYourCards</option>
+            <option value="games_island">Games Island</option>
+            <option value="dreamland">Dreamland</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Name (optional)</label>
-        <input type="text" name="name" placeholder="Product name">
-      </div>
-      <div class="form-group" style="min-width:130px">
-        <label>Shop</label>
-        <select name="shop">
-          <option value="">Auto-detect</option>
-          <option value="bol">Bol.com</option>
-          <option value="mediamarkt">MediaMarkt</option>
-          <option value="pocketgames">PocketGames</option>
-          <option value="catchyourcards">CatchYourCards</option>
-          <option value="games_island">Games Island</option>
-          <option value="dreamland">Dreamland</option>
-        </select>
-      </div>
-      <div>
+      <div style="display:flex; justify-content:flex-end; margin-top:16px">
         <button type="submit" class="btn btn-primary">Add Product</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Rate limiter status -->
-{% if rate_limiters %}
-<div class="section-title">Rate Limiter Status</div>
-<div class="grid-3">
-  {% for rl in rate_limiters %}
+<!-- Two-column layout: Rate Limiter + Upcoming Sets -->
+<div class="grid-2">
+  <!-- Rate Limiter Status -->
+  {% if rate_limiters %}
   <div class="card mb-0">
     <div class="card-body">
-      <div class="flex-between" style="margin-bottom:12px">
-        <span style="font-weight:600; color:var(--text)">{{ rl.shop_id }}</span>
-        {% if rl.paused %}
-          <span class="badge badge-red">Paused {{ rl.pause_remaining }}s</span>
-        {% elif rl.ban_score is defined and rl.ban_score > 3 %}
-          <span class="badge badge-amber">Throttled</span>
-        {% else %}
-          <span class="badge badge-green">Normal</span>
-        {% endif %}
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center">
-        <div>
-          <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ rl.interval }}s</div>
-          <div style="font-size:0.6rem; color:var(--muted); text-transform:uppercase">Interval</div>
+      <div class="section-title">Rate Limiter Status</div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        {% for rl in rate_limiters %}
+        <div class="rl-card{% if rl.paused %} rl-card--paused{% elif rl.ban_score is defined and rl.ban_score > 3 %} rl-card--throttled{% endif %}">
+          <div>
+            <div class="rl-shop">{{ rl.shop_id }}</div>
+            <div class="rl-detail">Polling interval: {{ rl.interval }}s</div>
+          </div>
+          <div style="text-align:right">
+            <div class="rl-score {% if rl.paused %}rl-score--error{% elif rl.ban_score is defined and rl.ban_score > 3 %}rl-score--tertiary{% else %}rl-score--primary{% endif %}">Score: {{ rl.ban_score }}</div>
+            <div class="rl-detail">
+              {% if rl.paused %}Paused {{ rl.pause_remaining }}s
+              {% elif rl.ban_score is defined and rl.ban_score > 3 %}Throttled
+              {% else %}Stable{% endif %}
+            </div>
+          </div>
         </div>
-        <div>
-          <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ rl.ban_score }}</div>
-          <div style="font-size:0.6rem; color:var(--muted); text-transform:uppercase">Ban Score</div>
-        </div>
-        <div>
-          <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ rl.error_rate }}%</div>
-          <div style="font-size:0.6rem; color:var(--muted); text-transform:uppercase">Error Rate</div>
-        </div>
+        {% endfor %}
       </div>
     </div>
   </div>
-  {% endfor %}
-</div>
-{% endif %}
+  {% endif %}
 
-<!-- Upcoming sets -->
-{% if upcoming_sets %}
-<div class="section-title">Upcoming Sets</div>
-<div class="grid-2">
-  {% for s in upcoming_sets %}
+  <!-- Upcoming Set Launches -->
+  {% if upcoming_sets %}
   <div class="card mb-0">
-    <div class="card-body flex-between">
-      <div>
-        <div style="font-weight:500; color:var(--text)">{{ s.name }}</div>
-        <div style="font-size:0.75rem; color:var(--muted); margin-top:4px">{{ s.release_date }} — {{ s.shops|join(', ') }}</div>
+    <div class="card-body">
+      <div class="section-title">Upcoming Set Launches</div>
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px">
+        {% for s in upcoming_sets %}
+        <div class="countdown-card{% if not s.is_released and s.is_within_window %}" style="border:1px solid rgba(173,198,255,0.1){% endif %}">
+          {% if s.is_released %}
+            <div class="countdown-number" style="color:var(--tertiary)">&#10003;</div>
+            <div class="countdown-name">{{ s.name }}</div>
+            <div class="countdown-date">Released</div>
+          {% else %}
+            <div class="countdown-number">{{ s.days_until_release }}d</div>
+            <div class="countdown-name">{{ s.name }}</div>
+            <div class="countdown-date">Expected: {{ s.release_date }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
       </div>
-      <div class="text-right">
-        {% if s.is_released %}
-          <span class="badge badge-green">Released</span>
-        {% elif s.is_within_window %}
-          <span class="badge badge-amber">{{ s.days_until_release }}d — Scanning</span>
-        {% else %}
-          <span style="font-size:1.2rem; font-weight:700; color:var(--muted)">{{ s.days_until_release }}d</span>
-        {% endif %}
+      <div class="info-box">
+        <span class="material-symbols-outlined">info</span>
+        <p>Observatory scanning for early retailer listings on {{ upcoming_sets|length * 7 }} specialized domains.</p>
       </div>
     </div>
   </div>
-  {% endfor %}
+  {% endif %}
 </div>
-{% endif %}
 
-<!-- Discovered products -->
+<!-- Discovered Products -->
 {% if discovered %}
-<div class="section-title">Discovered Products <span class="section-subtitle">(pending approval)</span></div>
 <div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Auto-Discovered Products</span>
+  </div>
   <table>
     <thead>
       <tr>
-        <th>Product ID</th>
-        <th>Source</th>
-        <th>Discovered</th>
-        <th>Action</th>
+        <th>ID</th>
+        <th>Source Category</th>
+        <th>Discovered Time</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for d in discovered %}
       <tr>
-        <td><a href="{{ d.url }}" target="_blank">{{ d.product_id }}</a></td>
-        <td class="text-muted">{{ d.source }}</td>
-        <td class="text-muted">{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
+        <td style="font-family:'SF Mono','Consolas',monospace; font-size:0.75rem"><a href="{{ d.url }}" target="_blank">{{ d.product_id }}</a></td>
+        <td class="text-xs">{{ d.source }}</td>
+        <td class="text-xs text-muted">{{ d.discovered_at.strftime('%Y-%m-%d %H:%M') if d.discovered_at else '-' }}</td>
         <td>
           <form method="POST" action="/monitor/add" style="display:inline">
             <input type="hidden" name="url" value="{{ d.url }}">
             <input type="hidden" name="name" value="{{ d.name or '' }}">
-            <button type="submit" class="btn btn-outline">Monitor</button>
+            <button type="submit" class="btn-monitor">Monitor</button>
           </form>
         </td>
       </tr>

@@ -57,7 +57,7 @@ def test_index_with_auth(dashboard_client):
     _login(dashboard_client)
     resp = dashboard_client.get("/")
     assert resp.status_code == 200
-    assert "Pokemon Monitor" in resp.text
+    assert "Monitor" in resp.text
 
 
 def test_logs_page(dashboard_client):

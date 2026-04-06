@@ -17,50 +17,50 @@
       <td>
         {% set shop = p.get('shop', 'bol') if p.get is defined else 'bol' %}
         {% if shop == 'bol' %}
-          <span class="badge badge-orange">bol</span>
+          <span class="pill pill--tertiary">bol.com</span>
         {% elif shop == 'mediamarkt' %}
-          <span class="badge badge-red">mediamarkt</span>
+          <span class="pill pill--error">mediamarkt</span>
         {% elif shop == 'pocketgames' %}
-          <span class="badge badge-purple">pocketgames</span>
+          <span class="pill pill--primary">pocketgames</span>
         {% elif shop == 'catchyourcards' %}
-          <span class="badge badge-teal">catchyourcards</span>
+          <span class="pill pill--teal">catchyourcards</span>
         {% elif shop == 'games_island' %}
-          <span class="badge badge-sky">games-island</span>
+          <span class="pill pill--sky">games-island</span>
         {% elif shop == 'dreamland' %}
-          <span class="badge badge-pink">dreamland</span>
+          <span class="pill pill--pink">dreamland</span>
         {% else %}
-          <span class="badge badge-gray">{{ shop }}</span>
+          <span class="pill pill--gray">{{ shop }}</span>
         {% endif %}
       </td>
       <td>
         {% if p.status == 'healthy' %}
-          <span class="badge badge-green">healthy</span>
+          <span class="status status--healthy"><span class="status-dot"></span> healthy</span>
         {% elif p.status == 'slow' %}
-          <span class="badge badge-amber">slow</span>
+          <span class="status status--slow"><span class="status-dot"></span> slow</span>
         {% else %}
-          <span class="badge badge-red">dead</span>
+          <span class="status status--dead"><span class="status-dot"></span> dead</span>
         {% endif %}
       </td>
       <td>
         {% if p.last_availability == 'InStock' %}
-          <span class="badge badge-green">In Stock</span>
+          <span class="pill pill--primary">In Stock</span>
         {% elif p.last_availability == 'OutOfStock' %}
-          <span class="badge badge-red">Out of Stock</span>
+          <span class="pill pill--error">Out of Stock</span>
         {% else %}
-          <span class="badge badge-gray">Unknown</span>
+          <span class="pill pill--gray">Unknown</span>
         {% endif %}
       </td>
-      <td class="text-muted">{{ ('\u20ac' + p.price) if p.price else '-' }}</td>
-      <td class="text-muted nowrap">{{ p.last_polled_at.strftime('%H:%M:%S') if p.last_polled_at else 'Never' }}</td>
+      <td style="font-family:'SF Mono','Consolas',monospace; font-size:0.875rem">{{ ('\u20ac' + p.price) if p.price else '-' }}</td>
+      <td class="text-xs text-muted">{{ p.last_polled_at.strftime('%H:%M:%S') if p.last_polled_at else 'Never' }}</td>
       <td>
         <form method="POST" action="/monitor/remove/{{ p.product_id }}" style="display:inline">
-          <button type="submit" class="btn btn-danger">Remove</button>
+          <button type="submit" class="btn-danger">Remove</button>
         </form>
       </td>
     </tr>
     {% endfor %}
     {% if not products %}
-    <tr><td colspan="7" class="text-center text-muted" style="padding:32px 16px">No products monitored yet</td></tr>
+    <tr><td colspan="7" class="text-center text-muted" style="padding:32px 24px">No products monitored yet</td></tr>
     {% endif %}
   </tbody>
 </table>

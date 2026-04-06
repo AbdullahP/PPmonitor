@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ product.name or product.product_id }} - Pokemon Monitor{% endblock %}
+{% block title %}{{ product.name or product.product_id }} - Pokémon Monitor{% endblock %}
+{% block page_title %}{{ product.name or product.product_id }}{% endblock %}
 {% block content %}
 
+<!-- Product meta -->
 <div style="margin-bottom:24px">
-  <h2 style="font-size:1.3rem; font-weight:700; color:var(--text)">{{ product.name or product.product_id }}</h2>
-  <p class="text-muted text-sm" style="margin-top:6px">
+  <p style="font-size:0.875rem; color:var(--outline); margin-top:4px">
     <a href="{{ product.url }}" target="_blank">View on store</a>
     &nbsp;|&nbsp; ID: {{ product.product_id }}
     {% if product.offer_uid %} &nbsp;|&nbsp; Offer: {{ product.offer_uid[:8] }}...{% endif %}
@@ -14,29 +15,29 @@
 
 <!-- Product stats -->
 <div class="stats-grid">
-  <div class="stat-card">
+  <div class="stat-card{% if product.last_availability == 'InStock' %} stat-card--primary{% elif product.last_availability == 'OutOfStock' %} stat-card--error{% endif %}">
     <div class="stat-number" style="font-size:1.5rem">
       {% if product.last_availability == 'InStock' %}
-        <span style="color:var(--success)">In Stock</span>
+        <span style="color:var(--primary)">In Stock</span>
       {% elif product.last_availability == 'OutOfStock' %}
         <span style="color:var(--error)">Out of Stock</span>
       {% else %}
-        <span class="text-muted">Unknown</span>
+        <span style="color:var(--outline)">Unknown</span>
       {% endif %}
     </div>
-    <div class="stat-label">Availability</div>
+    <div class="stat-label stat-label--default">Availability</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card stat-card--primary">
     <div class="stat-number" style="font-size:1.5rem">{{ ('\u20ac' + product.price) if product.price else '-' }}</div>
-    <div class="stat-label">Price</div>
+    <div class="stat-label stat-label--default">Price</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card{% if product.consecutive_failures|default(0) > 0 %} stat-card--error{% endif %}">
     <div class="stat-number" style="font-size:1.5rem; {% if product.consecutive_failures|default(0) > 0 %}color:var(--error){% endif %}">{{ product.consecutive_failures|default(0) }}</div>
-    <div class="stat-label">Consecutive Failures</div>
+    <div class="stat-label stat-label--default">Consecutive Failures</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card stat-card--tertiary">
     <div class="stat-number" style="font-size:1.5rem">{{ prediction.restock_count|default(0) }}</div>
-    <div class="stat-label">Restocks Detected</div>
+    <div class="stat-label stat-label--default">Restocks Detected</div>
   </div>
 </div>
 
@@ -44,23 +45,23 @@
 {% if prediction and prediction.restock_count|default(0) > 0 %}
 <div class="card">
   <div class="card-body">
-    <div class="section-title" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.1em">Restock Prediction</div>
+    <div class="section-title">Restock Prediction</div>
     <div class="stats-grid">
       <div>
-        <div class="text-muted text-xs">Avg Interval</div>
-        <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ prediction.avg_interval_days or '-' }}{% if prediction.avg_interval_days %} days{% endif %}</div>
+        <div style="font-size:10px; color:var(--outline); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px">Avg Interval</div>
+        <div style="font-size:1.1rem; font-weight:700; color:#fff">{{ prediction.avg_interval_days or '-' }}{% if prediction.avg_interval_days %} days{% endif %}</div>
       </div>
       <div>
-        <div class="text-muted text-xs">Std Deviation</div>
-        <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ prediction.std_dev_days or '-' }}{% if prediction.std_dev_days %} days{% endif %}</div>
+        <div style="font-size:10px; color:var(--outline); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px">Std Deviation</div>
+        <div style="font-size:1.1rem; font-weight:700; color:#fff">{{ prediction.std_dev_days or '-' }}{% if prediction.std_dev_days %} days{% endif %}</div>
       </div>
       <div>
-        <div class="text-muted text-xs">Next Estimate</div>
-        <div style="font-size:1.1rem; font-weight:700; color:var(--text)">{{ prediction.next_restock_estimate[:10] if prediction.next_restock_estimate else '-' }}</div>
+        <div style="font-size:10px; color:var(--outline); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px">Next Estimate</div>
+        <div style="font-size:1.1rem; font-weight:700; color:#fff">{{ prediction.next_restock_estimate[:10] if prediction.next_restock_estimate else '-' }}</div>
       </div>
       <div>
-        <div class="text-muted text-xs">Confidence</div>
-        <div style="font-size:1.1rem; font-weight:700; {% if prediction.confidence == 'high' %}color:var(--success){% elif prediction.confidence == 'medium' %}color:var(--warning){% else %}color:var(--muted){% endif %}">
+        <div style="font-size:10px; color:var(--outline); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px">Confidence</div>
+        <div style="font-size:1.1rem; font-weight:700; {% if prediction.confidence == 'high' %}color:var(--primary){% elif prediction.confidence == 'medium' %}color:var(--tertiary){% else %}color:var(--outline){% endif %}">
           {{ prediction.confidence|capitalize }}
         </div>
       </div>
@@ -72,8 +73,8 @@
 <!-- Poll history -->
 <div class="card">
   <div class="card-header">
-    <span style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--text)">Poll History</span>
-    <span class="text-muted" style="font-size:0.75rem">({{ poll_history|default([])|length }})</span>
+    <span class="card-header-title">Poll History</span>
+    <span class="card-header-sub">({{ poll_history|default([])|length }})</span>
   </div>
   <table>
     <thead>
@@ -88,17 +89,17 @@
     <tbody>
       {% for poll in poll_history %}
       <tr>
-        <td class="text-muted nowrap">{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
+        <td class="text-muted nowrap text-xs">{{ poll.timestamp.strftime('%Y-%m-%d %H:%M:%S') if poll.timestamp else '-' }}</td>
         <td>
           {% if poll.success %}
-            <span class="badge badge-green">OK</span>
+            <span class="pill pill--primary">OK</span>
           {% else %}
-            <span class="badge badge-red">FAIL</span>
+            <span class="pill pill--error">FAIL</span>
           {% endif %}
         </td>
-        <td class="text-muted">{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
-        <td class="text-muted">{{ poll.availability or '-' }}</td>
-        <td class="text-muted text-mono">{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
+        <td class="text-muted text-xs">{{ (poll.latency_ms|string + 'ms') if poll.latency_ms else '-' }}</td>
+        <td class="text-muted text-xs">{{ poll.availability or '-' }}</td>
+        <td class="text-muted" style="font-family:'SF Mono','Consolas',monospace; font-size:0.75rem">{{ poll.revision_id[:8] + '...' if poll.revision_id else '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -109,8 +110,8 @@
 {% if errors %}
 <div class="card">
   <div class="card-header">
-    <span style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--text)">Recent Errors</span>
-    <span class="text-muted" style="font-size:0.75rem">({{ errors|length }})</span>
+    <span class="card-header-title">Recent Errors</span>
+    <span class="card-header-sub">({{ errors|length }})</span>
   </div>
   <table>
     <thead>
@@ -119,8 +120,8 @@
     <tbody>
       {% for e in errors %}
       <tr>
-        <td class="text-muted nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
-        <td style="color:var(--error)" class="text-mono">{{ e.error_message or '-' }}</td>
+        <td class="text-muted nowrap text-xs">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.75rem">{{ e.error_message or '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -132,7 +133,7 @@
 {% if alerts %}
 <div class="card">
   <div class="card-header">
-    <span style="font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--text)">Alert History</span>
+    <span class="card-header-title">Alert History</span>
   </div>
   <table>
     <thead>
@@ -141,16 +142,16 @@
     <tbody>
       {% for a in alerts %}
       <tr>
-        <td class="text-muted nowrap">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
+        <td class="text-muted nowrap text-xs">{{ a.timestamp.strftime('%Y-%m-%d %H:%M:%S') if a.timestamp else '-' }}</td>
         <td>
           {% if a.alert_type == 'stock_change' %}
-            <span class="badge badge-green">Stock</span>
+            <span class="pill pill--primary">Stock</span>
           {% elif a.alert_type == 'error' %}
-            <span class="badge badge-red">Error</span>
+            <span class="pill pill--error">Error</span>
           {% elif a.alert_type == 'discovery' %}
-            <span class="badge badge-blue">Discovery</span>
+            <span class="pill pill--sky">Discovery</span>
           {% else %}
-            <span class="badge badge-gray">{{ a.alert_type }}</span>
+            <span class="pill pill--gray">{{ a.alert_type }}</span>
           {% endif %}
         </td>
         <td class="text-muted text-xs">{{ a.message or '-' }}</td>

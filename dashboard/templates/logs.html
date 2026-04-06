@@ -1,11 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Error Logs - Pokemon Monitor{% endblock %}
+{% block title %}Error Logs - Pokémon Monitor{% endblock %}
+{% block page_title %}Error Logs{% endblock %}
 {% block content %}
 
-<h2 style="font-size:1.3rem; font-weight:700; color:var(--text); margin-bottom:24px">Error Logs</h2>
-
-<form method="GET" action="/logs" class="form-row" style="margin-bottom:24px">
-  <div class="form-group" style="min-width:200px">
+<form method="GET" action="/logs" style="display:flex; gap:12px; align-items:flex-end; margin-bottom:24px">
+  <div style="min-width:200px">
     <label>Filter by product</label>
     <select name="product_id">
       <option value="">All products</option>
@@ -17,7 +16,7 @@
     </select>
   </div>
   <div>
-    <button type="submit" class="btn btn-primary">Filter</button>
+    <button type="submit" class="btn btn-primary" style="padding:10px 24px">Filter</button>
   </div>
 </form>
 
@@ -33,13 +32,13 @@
     <tbody>
       {% for e in errors %}
       <tr>
-        <td class="text-muted nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
+        <td class="text-muted nowrap text-xs">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
         <td><a href="/product/{{ e.product_id }}">{{ e.product_id }}</a></td>
-        <td style="color:var(--error)" class="text-mono">{{ e.error_message or '-' }}</td>
+        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.75rem">{{ e.error_message or '-' }}</td>
       </tr>
       {% endfor %}
       {% if not errors %}
-      <tr><td colspan="3" class="text-center text-muted" style="padding:32px 16px">No errors found</td></tr>
+      <tr><td colspan="3" class="text-center text-muted" style="padding:32px 24px">No errors found</td></tr>
       {% endif %}
     </tbody>
   </table>
