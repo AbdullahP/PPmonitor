@@ -24,9 +24,9 @@ async def main() -> None:
                     urls[0], headers=adapter.get_headers(), follow_redirects=True
                 )
                 ids = adapter.parse_category(resp.text)
-                print(f"  {shop_id}: \u2705 HTTP {resp.status_code}, found {len(ids)} products")
+                print(f"  {shop_id}: OK HTTP {resp.status_code}, found {len(ids)} products")
             except Exception as e:
-                print(f"  {shop_id}: \u274c {e}")
+                print(f"  {shop_id}: FAIL {e}")
     print("Done.")
 
 
