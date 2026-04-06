@@ -29,7 +29,6 @@ services:
       - ./monitor:/app/monitor
       - ./config.py:/app/config.py
     environment:
-      BOL_BASE_URL: http://mock_server:8099
       DISCORD_ENABLED: "false"
     depends_on:
       mock_server:

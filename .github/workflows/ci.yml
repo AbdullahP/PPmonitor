@@ -42,6 +42,5 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql://pokemon:pokemon@localhost:5432/pokemon_monitor
-          BOL_BASE_URL: http://localhost:8099
           DISCORD_ENABLED: "false"
         run: pytest tests/ -v

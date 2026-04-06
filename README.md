@@ -43,7 +43,6 @@ open http://localhost:3000   # admin / changeme
 | `DISCORD_ENABLED` | No | Set `false` to suppress all webhooks (default: `true`) |
 | `DASHBOARD_USER` | No | Dashboard login (default: `admin`) |
 | `DASHBOARD_PASS` | No | Dashboard password (default: `changeme`) |
-| `BOL_BASE_URL` | No | Override for mock server (default: `https://www.bol.com`) |
 
 ## Development
 
@@ -63,6 +62,6 @@ make down     # Stop everything
 3. Add a PostgreSQL service
 4. Add services for: monitor, bot, redirect, dashboard
 5. Set environment variables (copy from `.env.example`)
-6. Set `BOL_BASE_URL=https://www.bol.com` and `DISCORD_ENABLED=true`
+6. Set `DISCORD_ENABLED=true`
 7. Add `DEPLOY_WEBHOOK_URL` as a GitHub Actions secret
 8. Push to `main` — CI runs, then auto-deploys

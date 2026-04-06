@@ -22,11 +22,9 @@ def test_parse_category_extracts_ids():
 
 @pytest.mark.asyncio
 async def test_poll_category_finds_new_products(mock_server_url, state, monkeypatch):
-    from config import settings
     from monitor.shops.bol import BolAdapter
 
-    # Patch both the adapter's base_url and the settings for category paths
-    monkeypatch.setattr(settings, "bol_base_url", mock_server_url)
+    # Patch the adapter's base_url to point to mock server
     monkeypatch.setattr(BolAdapter, "base_url", mock_server_url)
 
     async with httpx.AsyncClient() as client:

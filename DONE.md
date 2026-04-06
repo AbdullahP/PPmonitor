@@ -60,7 +60,6 @@ make mock-oos      # → resets to out of stock
 5. Set environment variables on each service:
    - `DATABASE_URL` (from Railway PostgreSQL)
    - `DISCORD_ENABLED=true`
-   - `BOL_BASE_URL=https://www.bol.com`
    - All `DISCORD_*` tokens/webhooks
    - `DASHBOARD_USER` + `DASHBOARD_PASS`
    - `REDIRECT_BASE_URL=https://your-redirect.up.railway.app`

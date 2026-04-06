@@ -19,9 +19,6 @@ class Settings(BaseSettings):
     redirect_base_url: str = "http://localhost:8080"
     redirect_port: int = 8080
 
-    # Bol.com
-    bol_base_url: str = "https://www.bol.com"
-
     # Polling intervals (seconds)
     poll_interval_product: int = 10
     poll_interval_category: int = 60
