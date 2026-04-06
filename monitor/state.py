@@ -275,7 +275,7 @@ class StateManager:
     ) -> dict:
         if shops is None:
             shops = ["bol", "mediamarkt", "pocketgames",
-                     "catchyourcards", "games_island", "dreamland"]
+                     "catchyourcards", "games_island", "dreamland", "amazon_uk"]
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """INSERT INTO keywords

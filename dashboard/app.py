@@ -420,10 +420,8 @@ async def add_product(
             shop = "games_island"
         elif "dreamland" in url_lower:
             shop = "dreamland"
-        elif "amazon.nl" in url_lower:
-            shop = "amazon_nl"
-        elif "amazon.de" in url_lower:
-            shop = "amazon_de"
+        elif "amazon.co.uk" in url_lower:
+            shop = "amazon_uk"
         else:
             shop = "bol"
 
@@ -433,7 +431,7 @@ async def add_product(
         if not match:
             raise HTTPException(400, "Could not extract product ID from URL")
         product_id = match.group(1)
-    elif shop in ("amazon_nl", "amazon_de"):
+    elif shop == "amazon_uk":
         match = re.search(r'/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)', url)
         if not match:
             raise HTTPException(400, "Could not extract ASIN from Amazon URL")

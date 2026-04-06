@@ -109,8 +109,7 @@ _limiters: dict[str, AdaptiveRateLimiter] = {}
 
 # Shops that need higher default intervals to avoid blocks
 _SHOP_BASE_INTERVALS: dict[str, float] = {
-    "amazon_nl": 30.0,
-    "amazon_de": 30.0,
+    "amazon_uk": 30.0,
 }
 
 

@@ -115,17 +115,10 @@ async def go(
     if shop == "catchyourcards":
         return HTMLResponse(_catchyourcards_page(sku))
 
-    if shop == "amazon_nl":
+    if shop == "amazon_uk":
         asin = sku
         return RedirectResponse(
-            f"https://www.amazon.nl/gp/aws/cart/add.html?ASIN.1={asin}&Quantity.1=1",
-            status_code=302,
-        )
-
-    if shop == "amazon_de":
-        asin = sku
-        return RedirectResponse(
-            f"https://www.amazon.de/gp/aws/cart/add.html?ASIN.1={asin}&Quantity.1=1",
+            f"https://www.amazon.co.uk/gp/aws/cart/add.html?ASIN.1={asin}&Quantity.1=1",
             status_code=302,
         )
 

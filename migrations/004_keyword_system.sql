@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS keywords (
   id SERIAL PRIMARY KEY,
   keyword VARCHAR(200) NOT NULL,
   match_type VARCHAR(20) DEFAULT 'contains',
-  shops JSONB DEFAULT '["bol","mediamarkt","pocketgames","catchyourcards","games_island","dreamland"]',
+  shops JSONB DEFAULT '["bol","mediamarkt","pocketgames","catchyourcards","games_island","dreamland","amazon_uk"]',
   priority VARCHAR(10) DEFAULT 'normal',
   auto_monitor BOOLEAN DEFAULT TRUE,
   notify_discord BOOLEAN DEFAULT TRUE,
