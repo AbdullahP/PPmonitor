@@ -1,4 +1,4 @@
-.PHONY: dev dev-down test logs shell lint
+.PHONY: dev dev-down test logs shell lint test-discord test-scraper prod
 
 # Start all services in dev mode (mock server, disabled Discord)
 dev:
@@ -37,6 +37,14 @@ mock-oos:
 
 mock-state:
 	curl -s http://localhost:8099/admin/state | python -m json.tool
+
+# Local Discord webhook test (reads .env, sends test messages)
+test-discord:
+	python tests/test_discord_local.py
+
+# Local scraper test (hits real shop category pages)
+test-scraper:
+	python tests/test_scraper_local.py
 
 # Production (no mock server, no volume mounts)
 prod:
