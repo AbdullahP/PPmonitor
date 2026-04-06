@@ -25,10 +25,10 @@ async def test_webhook(name: str, url: str | None) -> None:
                     "color": 0x22C55E,
                 }],
             })
-        icon = "\u2705" if resp.status_code in (200, 204) else "\u274c"
+        icon = "OK" if resp.status_code in (200, 204) else "FAIL"
         print(f"  {name}: {icon} HTTP {resp.status_code}")
     except Exception as e:
-        print(f"  {name}: \u274c {e}")
+        print(f"  {name}: FAIL {e}")
 
 
 async def main() -> None:
