@@ -93,7 +93,7 @@ def test_logs_page(dashboard_client):
     _login(dashboard_client)
     resp = dashboard_client.get("/logs")
     assert resp.status_code == 200
-    assert "Error Logs" in resp.text
+    assert "Logs" in resp.text
 
 
 def test_alerts_page(dashboard_client):

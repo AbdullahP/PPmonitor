@@ -60,6 +60,15 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                 polled += 1
                 limiter.record_result(success=True)
 
+                # Handle Amazon-style blocks — don't count as failure
+                if data.availability == "Blocked":
+                    await log_poll_result(
+                        state, product_id=product_id, success=True,
+                        latency_ms=data.latency_ms, availability="Blocked",
+                    )
+                    logger.warning("Blocked response for %s [%s]", product_id, shop)
+                    continue
+
                 await log_poll_result(
                     state,
                     product_id=product_id,
@@ -97,7 +106,7 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
             except httpx.HTTPStatusError as exc:
                 polled += 1
                 limiter.record_result(success=False, status_code=exc.response.status_code)
-                error_msg = f"{type(exc).__name__}: {exc.response.status_code}"
+                error_msg = f"HTTP {exc.response.status_code} for {url}"
                 logger.error("Poll failed for %s [%s]: %s", product_id, shop, error_msg)
 
                 await log_poll_result(
@@ -115,7 +124,7 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
             except Exception as exc:
                 polled += 1
                 limiter.record_result(success=False)
-                error_msg = f"{type(exc).__name__}: {exc}"
+                error_msg = f"{type(exc).__name__}: {exc} — {url}"
                 logger.error("Poll failed for %s [%s]: %s", product_id, shop, error_msg)
 
                 await log_poll_result(

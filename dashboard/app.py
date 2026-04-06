@@ -158,6 +158,46 @@ async def api_test_webhook(state: StateManager = Depends(get_state)):
     return await test_all_webhooks(state=state)
 
 
+@app.get("/api/discord/guilds")
+async def api_discord_guilds():
+    """Fetch guilds the bot is a member of via Discord REST API."""
+    import httpx
+    token = settings.discord_bot_token
+    if not token:
+        return JSONResponse({"error": "DISCORD_BOT_TOKEN not configured"}, status_code=400)
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            "https://discord.com/api/v10/users/@me/guilds",
+            headers={"Authorization": f"Bot {token}"},
+        )
+        if resp.status_code != 200:
+            return JSONResponse({"error": f"Discord API error: {resp.status_code}"}, status_code=502)
+        guilds = resp.json()
+        return [{"id": g["id"], "name": g["name"], "icon": g.get("icon")} for g in guilds]
+
+
+@app.get("/api/discord/guilds/{guild_id}/channels")
+async def api_discord_channels(guild_id: str):
+    """Fetch text channels for a guild via Discord REST API."""
+    import httpx
+    token = settings.discord_bot_token
+    if not token:
+        return JSONResponse({"error": "DISCORD_BOT_TOKEN not configured"}, status_code=400)
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            f"https://discord.com/api/v10/guilds/{guild_id}/channels",
+            headers={"Authorization": f"Bot {token}"},
+        )
+        if resp.status_code != 200:
+            return JSONResponse({"error": f"Discord API error: {resp.status_code}"}, status_code=502)
+        channels = resp.json()
+        # type=0 is text channel
+        return [
+            {"id": c["id"], "name": c["name"]}
+            for c in channels if c.get("type") == 0
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Overview (stripped down)
 # ---------------------------------------------------------------------------
@@ -513,12 +553,32 @@ async def approve_pokemon_discoveries(state: StateManager = Depends(get_state)):
 async def logs_page(
     request: Request,
     product_id: str | None = None,
+    shop: str = Query(default=""),
     state: StateManager = Depends(get_state),
 ):
     try:
-        errors = await state.get_recent_errors(product_id, limit=100)
+        errors = await state.get_recent_errors(product_id, limit=200)
     except Exception:
         errors = []
+
+    # Filter by shop if specified
+    if shop:
+        try:
+            shop_products = await state.list_products(active_only=False)
+            shop_pids = {p["product_id"] for p in shop_products if p.get("shop") == shop}
+            errors = [e for e in errors if e.get("product_id") in shop_pids]
+        except Exception:
+            pass
+
+    # Group consecutive identical errors
+    grouped: list[dict] = []
+    for e in errors:
+        msg = e.get("error_message", "")
+        if grouped and grouped[-1].get("error_message") == msg and grouped[-1].get("product_id") == e.get("product_id"):
+            grouped[-1]["count"] = grouped[-1].get("count", 1) + 1
+        else:
+            grouped.append({**e, "count": 1})
+
     try:
         products = await state.list_products(active_only=False)
     except Exception:
@@ -528,11 +588,16 @@ async def logs_page(
     except Exception:
         webhook_errors = []
 
+    # Build product→shop lookup for badges
+    product_shops = {p["product_id"]: p.get("shop", "bol") for p in products}
+
     return templates.TemplateResponse(request, "logs.html", {
         "active_page": "logs",
-        "errors": errors,
+        "errors": grouped,
         "products": products,
+        "product_shops": product_shops,
         "selected_product": product_id,
+        "filter_shop": shop,
         "webhook_errors": webhook_errors,
     })
 
@@ -632,6 +697,7 @@ async def add_discord_server(
     public_webhook: str = Form(default=""),
     admin_webhook: str = Form(default=""),
     discovery_webhook: str = Form(default=""),
+    queue_webhook: str = Form(default=""),
     bot_token: str = Form(default=""),
     channel_id: str = Form(default=""),
     send_stock_alerts: bool = Form(default=False),
@@ -640,7 +706,7 @@ async def add_discord_server(
     send_queue_alerts: bool = Form(default=False),
     state: StateManager = Depends(get_state),
 ):
-    await state.add_discord_server(
+    server = await state.add_discord_server(
         name=name, description=description or None,
         public_webhook=public_webhook or None, admin_webhook=admin_webhook or None,
         discovery_webhook=discovery_webhook or None,
@@ -648,6 +714,9 @@ async def add_discord_server(
         send_stock_alerts=send_stock_alerts, send_discovery_alerts=send_discovery_alerts,
         send_admin_alerts=send_admin_alerts, send_queue_alerts=send_queue_alerts,
     )
+    # Update queue_webhook separately (not in add_discord_server params)
+    if queue_webhook:
+        await state.update_discord_server(server["id"], queue_webhook=queue_webhook)
     return RedirectResponse("/discord", status_code=303)
 
 

@@ -1,11 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Error Logs - Pokémon Monitor{% endblock %}
-{% block page_title %}Error Logs{% endblock %}
+{% block title %}Logs - Pokémon Monitor{% endblock %}
+{% block page_title %}Logs{% endblock %}
 {% block content %}
 
-<form method="GET" action="/logs" style="display:flex; gap:12px; align-items:flex-end; margin-bottom:24px">
+<!-- Filter bar -->
+<form method="GET" action="/logs" style="display:flex; gap:12px; align-items:flex-end; margin-bottom:24px; flex-wrap:wrap">
+  <div style="min-width:140px">
+    <label>Shop</label>
+    <select name="shop">
+      <option value="">All shops</option>
+      <option value="bol" {% if filter_shop == 'bol' %}selected{% endif %}>bol.com</option>
+      <option value="mediamarkt" {% if filter_shop == 'mediamarkt' %}selected{% endif %}>MediaMarkt</option>
+      <option value="pocketgames" {% if filter_shop == 'pocketgames' %}selected{% endif %}>PocketGames</option>
+      <option value="catchyourcards" {% if filter_shop == 'catchyourcards' %}selected{% endif %}>CatchYourCards</option>
+      <option value="games_island" {% if filter_shop == 'games_island' %}selected{% endif %}>Games Island</option>
+      <option value="dreamland" {% if filter_shop == 'dreamland' %}selected{% endif %}>Dreamland</option>
+      <option value="amazon_uk" {% if filter_shop == 'amazon_uk' %}selected{% endif %}>Amazon UK</option>
+    </select>
+  </div>
   <div style="min-width:200px">
-    <label>Filter by product</label>
+    <label>Product</label>
     <select name="product_id">
       <option value="">All products</option>
       {% for p in products %}
@@ -30,20 +44,41 @@
     <thead>
       <tr>
         <th>Time</th>
+        <th>Shop</th>
         <th>Product</th>
         <th>Error</th>
+        <th style="width:50px">#</th>
       </tr>
     </thead>
     <tbody>
       {% for e in errors %}
       <tr>
         <td class="text-muted nowrap text-xs">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') if e.timestamp else '-' }}</td>
-        <td><a href="/product/{{ e.product_id }}">{{ e.product_id }}</a></td>
-        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.75rem">{{ e.error_message or '-' }}</td>
+        <td>
+          {% set eshop = product_shops.get(e.product_id, '') %}
+          {% if eshop == 'bol' %}
+            <span class="pill pill--tertiary">bol</span>
+          {% elif eshop == 'amazon_uk' %}
+            <span class="pill pill--tertiary">amazon</span>
+          {% elif eshop == 'mediamarkt' %}
+            <span class="pill pill--error">mm</span>
+          {% elif eshop %}
+            <span class="pill pill--gray">{{ eshop[:6] }}</span>
+          {% else %}
+            <span class="text-muted">-</span>
+          {% endif %}
+        </td>
+        <td><a href="/product/{{ e.product_id }}">{{ e.product_id[:16] }}{% if e.product_id|length > 16 %}...{% endif %}</a></td>
+        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.7rem">{{ e.error_message or '-' }}</td>
+        <td>
+          {% if e.count > 1 %}
+            <span class="pill pill--error" style="font-size:9px">&times;{{ e.count }}</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
       {% if not errors %}
-      <tr><td colspan="3" class="text-center text-muted" style="padding:32px 24px">No errors found</td></tr>
+      <tr><td colspan="5" class="text-center text-muted" style="padding:32px 24px">No errors found</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -71,7 +106,7 @@
         <td class="text-muted nowrap text-xs">{{ w.timestamp.strftime('%Y-%m-%d %H:%M:%S') if w.timestamp else '-' }}</td>
         <td><span class="pill pill--error">{{ w.webhook_type }}</span></td>
         <td class="text-muted">{{ w.status_code or '-' }}</td>
-        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.75rem">{{ w.error_message or '-' }}</td>
+        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.7rem">{{ w.error_message or '-' }}</td>
       </tr>
       {% endfor %}
     </tbody>

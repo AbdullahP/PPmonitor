@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from urllib.parse import quote
+
+import httpx
 
 from monitor.scraper import ProductData
 from monitor.shops.base import ShopAdapter
+
+logger = logging.getLogger(__name__)
+
+_BLOCKED_INDICATORS = ("captcha", "robot check", "automated access", "api-services-support@amazon.com")
 
 RE_ASIN = re.compile(r'"ASIN"\s*:\s*"([A-Z0-9]{10})"')
 RE_PRODUCT_TITLE = re.compile(
@@ -89,6 +97,44 @@ class AmazonUKAdapter(ShopAdapter):
     def parse_category(self, html: str) -> set[str]:
         asins = RE_DATA_ASIN.findall(html)
         return set(dict.fromkeys(asins))
+
+    async def fetch_product(
+        self, client: httpx.AsyncClient, url: str
+    ) -> ProductData:
+        """Override to handle Amazon blocking gracefully."""
+        start = time.monotonic()
+        resp = await client.get(
+            url, headers=self.get_headers(), follow_redirects=True
+        )
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        body_lower = resp.text.lower()
+        is_blocked = (
+            resp.status_code in (403, 503)
+            or any(ind in body_lower for ind in _BLOCKED_INDICATORS)
+        )
+
+        if is_blocked:
+            logger.warning(
+                "Amazon UK blocked (HTTP %d) for %s — marking as blocked",
+                resp.status_code, url,
+            )
+            return ProductData(
+                product_id=self._extract_asin(resp.text) or url.split("/dp/")[-1][:10],
+                name=None,
+                price=None,
+                availability="Blocked",
+                offer_uid="",
+                revision_id="blocked",
+                latency_ms=latency_ms,
+            )
+
+        if resp.status_code >= 400:
+            resp.raise_for_status()
+
+        data = self.parse_product(resp.text, url=url)
+        data.latency_ms = latency_ms
+        return data
 
     def build_checkout_url(self, asin: str) -> str:
         return (

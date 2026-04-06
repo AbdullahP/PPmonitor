@@ -75,6 +75,12 @@
       </div>
       {% endif %}
 
+      {% if m.shop_id == 'amazon_uk' %}
+      <div style="padding:6px 8px; background:rgba(255,183,134,0.1); border:1px solid rgba(255,183,134,0.2); border-radius:6px; font-size:0.65rem; color:var(--tertiary); margin-bottom:8px">
+        &#9888; Amazon UK may be blocked from server IPs. Consider using a residential proxy or disabling this module.
+      </div>
+      {% endif %}
+
       {% if m.last_error_msg %}
       <div style="font-size:0.65rem; color:var(--error); margin-bottom:8px; font-family:'SF Mono','Consolas',monospace">
         {{ m.last_error_msg[:80] }}

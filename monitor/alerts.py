@@ -76,10 +76,15 @@ async def _get_queue_urls(state: StateManager | None) -> list[str]:
         try:
             servers = await state.list_discord_servers(active_only=True)
             if servers:
-                return [
-                    s["public_webhook"] for s in servers
-                    if s.get("send_queue_alerts", True) and s.get("public_webhook")
-                ]
+                urls = []
+                for s in servers:
+                    if not s.get("send_queue_alerts", True):
+                        continue
+                    # Prefer dedicated queue_webhook, fall back to public_webhook
+                    url = s.get("queue_webhook") or s.get("public_webhook")
+                    if url:
+                        urls.append(url)
+                return urls
         except Exception:
             logger.debug("Failed to load discord servers for queue, using env fallback")
     url = settings.discord_webhook_url
@@ -355,6 +360,7 @@ async def test_server_webhooks(
         ("public", "public_webhook"),
         ("admin", "admin_webhook"),
         ("discovery", "discovery_webhook"),
+        ("queue", "queue_webhook"),
     ]:
         url = server.get(field)
         if not url:

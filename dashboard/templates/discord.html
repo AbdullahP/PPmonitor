@@ -6,19 +6,51 @@
 <!-- Add Server Form -->
 <div class="card">
   <div class="card-body">
-    <div class="section-title">Add Server</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+      <div class="section-title" style="margin-bottom:0">Add Server</div>
+      <button onclick="loadGuilds(this)" class="btn-monitor">Load Bot Servers</button>
+    </div>
+
+    <!-- Guild loader result -->
+    <div id="guild-loader" style="display:none; margin-bottom:16px">
+      <label>Select Discord Server</label>
+      <select id="guild-select" onchange="loadChannels(this.value)" style="margin-bottom:8px">
+        <option value="">Choose a server...</option>
+      </select>
+      <div id="channel-loader" style="display:none; margin-top:8px">
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px">
+          <div>
+            <label>Stock Alerts Channel</label>
+            <select id="ch-stock"><option value="">Select...</option></select>
+          </div>
+          <div>
+            <label>Admin Alerts Channel</label>
+            <select id="ch-admin"><option value="">Select...</option></select>
+          </div>
+          <div>
+            <label>Discovery Channel</label>
+            <select id="ch-discovery"><option value="">Select...</option></select>
+          </div>
+          <div>
+            <label>Queue Alerts Channel</label>
+            <select id="ch-queue"><option value="">Select...</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <form method="POST" action="/discord/add">
       <div style="display:grid; grid-template-columns:1fr 2fr; gap:16px; margin-bottom:16px">
         <div>
           <label>Server Name</label>
-          <input type="text" name="name" placeholder="e.g. Production Community" required>
+          <input type="text" name="name" id="srv-name" placeholder="e.g. Production Community" required>
         </div>
         <div>
           <label>Description</label>
           <input type="text" name="description" placeholder="Optional description">
         </div>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px">
         <div>
           <label>Public Webhook (stock alerts)</label>
           <input type="url" name="public_webhook" placeholder="https://discord.com/api/webhooks/...">
@@ -30,6 +62,10 @@
         <div>
           <label>Discovery Webhook (new products)</label>
           <input type="url" name="discovery_webhook" placeholder="https://discord.com/api/webhooks/...">
+        </div>
+        <div>
+          <label>Queue Webhook (queue alerts)</label>
+          <input type="url" name="queue_webhook" placeholder="https://discord.com/api/webhooks/...">
         </div>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:16px; margin-bottom:16px">
@@ -83,13 +119,15 @@
             {% if s.is_default %}
               <span class="pill pill--primary" style="margin-left:8px">default</span>
             {% endif %}
+            {% if s.guild_name %}
+              <span class="text-muted text-xs" style="margin-left:8px">{{ s.guild_name }}</span>
+            {% endif %}
           </div>
           {% if s.description %}
             <div class="text-xs text-muted" style="margin-top:2px">{{ s.description }}</div>
           {% endif %}
         </div>
         <div style="display:flex; gap:8px; align-items:center">
-          <!-- Test result badge -->
           {% if s.last_test_result == 'ok' %}
             <span class="pill pill--primary">Tested OK</span>
           {% elif s.last_test_result == 'failed' %}
@@ -97,7 +135,6 @@
           {% else %}
             <span class="pill pill--gray">Untested</span>
           {% endif %}
-
           {% if s.is_active %}
             <span class="status status--healthy"><span class="status-dot"></span> active</span>
           {% else %}
@@ -106,44 +143,32 @@
         </div>
       </div>
 
-      <!-- Webhook status row -->
-      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px">
-        <div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">
-          {% if s.public_webhook %}
-            <span style="color:var(--primary)">&#10003;</span>
-          {% else %}
-            <span style="color:var(--outline)">&#10007;</span>
-          {% endif %}
+      <!-- Webhook status row (4 columns now) -->
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px">
+        <div style="padding:6px 10px; background:var(--surface-low); border-radius:6px; font-size:0.7rem">
+          {% if s.public_webhook %}<span style="color:var(--primary)">&#10003;</span>{% else %}<span style="color:var(--outline)">&#10007;</span>{% endif %}
           <strong>Public</strong>
-          {% if s.send_stock_alerts %}<span class="text-muted"> (stock + queue)</span>{% endif %}
         </div>
-        <div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">
-          {% if s.admin_webhook %}
-            <span style="color:var(--primary)">&#10003;</span>
-          {% else %}
-            <span style="color:var(--outline)">&#10007;</span>
-          {% endif %}
+        <div style="padding:6px 10px; background:var(--surface-low); border-radius:6px; font-size:0.7rem">
+          {% if s.admin_webhook %}<span style="color:var(--primary)">&#10003;</span>{% else %}<span style="color:var(--outline)">&#10007;</span>{% endif %}
           <strong>Admin</strong>
-          {% if s.send_admin_alerts %}<span class="text-muted"> (errors)</span>{% endif %}
         </div>
-        <div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">
-          {% if s.discovery_webhook %}
-            <span style="color:var(--primary)">&#10003;</span>
-          {% else %}
-            <span style="color:var(--outline)">&#10007;</span>
-          {% endif %}
+        <div style="padding:6px 10px; background:var(--surface-low); border-radius:6px; font-size:0.7rem">
+          {% if s.discovery_webhook %}<span style="color:var(--primary)">&#10003;</span>{% else %}<span style="color:var(--outline)">&#10007;</span>{% endif %}
           <strong>Discovery</strong>
-          {% if s.send_discovery_alerts %}<span class="text-muted"> (new products)</span>{% endif %}
+        </div>
+        <div style="padding:6px 10px; background:var(--surface-low); border-radius:6px; font-size:0.7rem">
+          {% if s.queue_webhook %}<span style="color:var(--primary)">&#10003;</span>{% else %}<span style="color:var(--outline)">&#10007;</span>{% endif %}
+          <strong>Queue</strong>
         </div>
       </div>
 
       {% if s.last_test_error %}
-        <div style="font-size:0.7rem; color:var(--error); margin-bottom:8px; font-family:'SF Mono','Consolas',monospace">
+        <div style="font-size:0.65rem; color:var(--error); margin-bottom:8px; font-family:'SF Mono','Consolas',monospace">
           {{ s.last_test_error[:200] }}
         </div>
       {% endif %}
 
-      <!-- Actions -->
       <div style="display:flex; gap:8px; align-items:center">
         <button onclick="testServer({{ s.id }}, this)" class="btn-monitor">Test</button>
         <form method="POST" action="/discord/{{ s.id }}/toggle" style="display:inline">
@@ -167,6 +192,42 @@
 </div>
 
 <script>
+async function loadGuilds(btn) {
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+  try {
+    const resp = await fetch('/api/discord/guilds');
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    const sel = document.getElementById('guild-select');
+    sel.innerHTML = '<option value="">Choose a server...</option>';
+    data.forEach(g => {
+      sel.innerHTML += '<option value="' + g.id + '">' + g.name + '</option>';
+    });
+    document.getElementById('guild-loader').style.display = 'block';
+  } catch (e) { alert('Failed: ' + e.message); }
+  btn.disabled = false;
+  btn.textContent = 'Load Bot Servers';
+}
+
+async function loadChannels(guildId) {
+  if (!guildId) return;
+  // Auto-fill server name
+  const sel = document.getElementById('guild-select');
+  document.getElementById('srv-name').value = sel.options[sel.selectedIndex].text;
+  try {
+    const resp = await fetch('/api/discord/guilds/' + guildId + '/channels');
+    const channels = await resp.json();
+    if (channels.error) { alert(channels.error); return; }
+    ['ch-stock','ch-admin','ch-discovery','ch-queue'].forEach(id => {
+      const s = document.getElementById(id);
+      s.innerHTML = '<option value="">Select...</option>';
+      channels.forEach(c => { s.innerHTML += '<option value="' + c.id + '">#' + c.name + '</option>'; });
+    });
+    document.getElementById('channel-loader').style.display = 'block';
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
 async function testServer(id, btn) {
   btn.disabled = true;
   btn.textContent = 'Testing...';
@@ -182,7 +243,6 @@ async function testServer(id, btn) {
       parts.push('<span style="color:' + color + '">' + icon + ' ' + key + '</span>');
     }
     el.innerHTML = parts.join(' &nbsp; ') || 'No webhooks configured';
-    // Reload after a moment to update badges
     setTimeout(() => location.reload(), 2000);
   } catch (e) {
     el.innerHTML = '<span style="color:var(--error)">Error: ' + e.message + '</span>';
