@@ -1,6 +1,8 @@
 """Local Discord webhook tester — run before deploying.
 
 Usage: python tests/test_discord_local.py
+
+NOT a pytest test — this sends real messages to Discord.
 """
 
 import asyncio
@@ -12,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-async def test_webhook(name: str, url: str | None) -> None:
+async def _check_webhook(name: str, url: str | None) -> None:
     if not url:
         print(f"  {name}: NOT CONFIGURED")
         return
@@ -33,10 +35,10 @@ async def test_webhook(name: str, url: str | None) -> None:
 
 async def main() -> None:
     print("Testing Discord webhooks from .env...")
-    await test_webhook("Public", os.getenv("DISCORD_WEBHOOK_URL"))
-    await test_webhook("Admin", os.getenv("DISCORD_ADMIN_WEBHOOK"))
-    await test_webhook("Discovery", os.getenv("DISCORD_DISCOVERY_WEBHOOK"))
-    await test_webhook("Queue", os.getenv("DISCORD_QUEUE_WEBHOOK"))
+    await _check_webhook("Public", os.getenv("DISCORD_WEBHOOK_URL"))
+    await _check_webhook("Admin", os.getenv("DISCORD_ADMIN_WEBHOOK"))
+    await _check_webhook("Discovery", os.getenv("DISCORD_DISCOVERY_WEBHOOK"))
+    await _check_webhook("Queue", os.getenv("DISCORD_QUEUE_WEBHOOK"))
     print("Done. Check your Discord channels.")
 
 
