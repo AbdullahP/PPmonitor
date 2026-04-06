@@ -1,136 +1,174 @@
-"""Upcoming Pokemon TCG set intelligence — auto-monitors products before release."""
+"""Keyword-based product discovery engine.
 
+Replaces the old hardcoded KNOWN_UPCOMING_SETS with a database-driven
+keyword system. Keywords are managed via the dashboard and matched
+against product names found on category/search pages.
+"""
+
+import json
 import logging
+import re
 from datetime import date
 
 import httpx
 
-from monitor.shops.registry import get_adapter
+from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
 
 logger = logging.getLogger(__name__)
 
 DAYS_BEFORE_RELEASE = 14
 
-KNOWN_UPCOMING_SETS = [
-    {
-        "name": "Perfect Order",
-        "release_date": "2026-04-25",
-        "search_terms": ["perfect order pokemon", "mega zygarde ex"],
-        "shops": ["bol", "mediamarkt"],
-        "auto_monitor": True,
-    },
-    {
-        "name": "Mega Evolution Chaos Rising",
-        "release_date": "2026-05-22",
-        "search_terms": ["chaos rising pokemon", "mega greninja ex"],
-        "shops": ["bol", "mediamarkt", "pocketgames"],
-        "auto_monitor": True,
-    },
-]
-
 
 def get_upcoming_sets() -> list[dict]:
-    """Return sets with enriched countdown information."""
-    today = date.today()
-    result = []
-    for s in KNOWN_UPCOMING_SETS:
-        release = date.fromisoformat(s["release_date"])
-        days_until = (release - today).days
-        result.append({
-            **s,
-            "days_until_release": days_until,
-            "is_within_window": 0 <= days_until <= DAYS_BEFORE_RELEASE,
-            "is_released": days_until < 0,
-        })
-    return result
+    """Return empty list — upcoming sets are now driven by keywords."""
+    return []
 
 
-def _match_terms_in_text(text: str, terms: list[str]) -> bool:
-    """Check if any search term partially matches the text."""
-    text_lower = text.lower()
-    return any(term.lower() in text_lower for term in terms)
+class KeywordEngine:
+    """Scan shop category pages and match product names against DB keywords."""
+
+    async def load_keywords(self, state: StateManager) -> list[dict]:
+        """Load active keywords from DB."""
+        return await state.list_keywords(active_only=True)
+
+    async def matches_any_keyword(
+        self, product_name: str, keywords: list[dict]
+    ) -> dict | None:
+        """Return the first matching keyword record, or None."""
+        name_lower = product_name.lower()
+        for kw in keywords:
+            kw_text = kw["keyword"].lower()
+            match_type = kw.get("match_type", "contains")
+
+            if match_type == "contains":
+                if kw_text in name_lower:
+                    return kw
+            elif match_type == "exact":
+                if kw_text == name_lower:
+                    return kw
+            elif match_type == "regex":
+                try:
+                    if re.search(kw_text, name_lower, re.IGNORECASE):
+                        return kw
+                except re.error:
+                    logger.warning("Invalid regex keyword: %s", kw["keyword"])
+        return None
+
+    async def run(
+        self,
+        state: StateManager,
+        client: httpx.AsyncClient,
+    ) -> list[dict]:
+        """Scan all shops for products matching active keywords.
+
+        Returns a list of newly discovered/monitored products.
+        """
+        keywords = await self.load_keywords(state)
+        if not keywords:
+            return []
+
+        new_finds: list[dict] = []
+        known_ids = await state.get_known_product_ids()
+
+        for shop_id, adapter_cls in SHOP_REGISTRY.items():
+            # Check which keywords apply to this shop
+            shop_keywords = []
+            for kw in keywords:
+                shops = kw.get("shops")
+                if isinstance(shops, str):
+                    shops = json.loads(shops)
+                if shops is None or shop_id in shops:
+                    shop_keywords.append(kw)
+            if not shop_keywords:
+                continue
+
+            try:
+                adapter = adapter_cls()
+                scan_urls = list(adapter.build_category_urls())
+
+                # Also search for high-priority keywords
+                for kw in shop_keywords:
+                    if kw.get("priority") == "high":
+                        scan_urls.append(adapter.get_search_url(kw["keyword"]))
+
+                all_found: set[str] = set()
+                for url in scan_urls:
+                    try:
+                        ids = await adapter.fetch_category(client, url)
+                        all_found.update(ids)
+                    except Exception:
+                        logger.debug("Keyword scan fetch failed: %s %s", shop_id, url)
+
+                new_ids = all_found - known_ids
+                if not new_ids:
+                    continue
+
+                for pid in new_ids:
+                    try:
+                        product_url = adapter.build_product_url(pid)
+                        data = await adapter.fetch_product(client, product_url)
+                        if not data or not data.name:
+                            continue
+
+                        match = await self.matches_any_keyword(
+                            data.name, shop_keywords
+                        )
+                        if not match:
+                            continue
+
+                        if match.get("auto_monitor", False):
+                            # Auto-add to active monitoring
+                            await state.add_product(
+                                pid, product_url,
+                                name=data.name, shop=shop_id,
+                            )
+                            known_ids.add(pid)
+                            logger.info(
+                                "Keyword auto-monitor: '%s' at %s [keyword=%s]",
+                                data.name, shop_id, match["keyword"],
+                            )
+                        else:
+                            # Add to discovered for manual approval
+                            is_new = await state.add_discovered(
+                                pid, product_url,
+                                name=data.name,
+                                source=f"keyword:{match['keyword']}",
+                                shop=shop_id,
+                            )
+                            if not is_new:
+                                continue
+                            known_ids.add(pid)
+                            logger.info(
+                                "Keyword discovered: '%s' at %s [keyword=%s]",
+                                data.name, shop_id, match["keyword"],
+                            )
+
+                        new_finds.append({
+                            "product_id": pid,
+                            "name": data.name,
+                            "shop": shop_id,
+                            "keyword": match["keyword"],
+                            "auto_monitored": match.get("auto_monitor", False),
+                            "url": product_url,
+                            "notify_discord": match.get("notify_discord", True),
+                        })
+                    except Exception:
+                        logger.debug(
+                            "Failed to fetch product %s from %s", pid, shop_id
+                        )
+            except Exception:
+                logger.exception("Keyword scan failed for %s", shop_id)
+
+        return new_finds
+
+
+# Module-level singleton
+keyword_engine = KeywordEngine()
 
 
 async def scan_upcoming_sets(
     client: httpx.AsyncClient, state: StateManager
 ) -> list[dict]:
-    """Scan shops for upcoming sets that are within the monitoring window.
-
-    Returns a list of newly discovered products.
-    """
-    today = date.today()
-    new_finds: list[dict] = []
-
-    for set_info in KNOWN_UPCOMING_SETS:
-        if not set_info.get("auto_monitor", False):
-            continue
-
-        release = date.fromisoformat(set_info["release_date"])
-        days_until = (release - today).days
-
-        if days_until < 0 or days_until > DAYS_BEFORE_RELEASE:
-            continue
-
-        logger.info(
-            "Scanning for '%s' (releases in %d days) across %s",
-            set_info["name"], days_until, set_info["shops"],
-        )
-
-        for shop_id in set_info["shops"]:
-            try:
-                adapter = get_adapter(shop_id)
-
-                # Collect URLs: category pages + search pages for each term
-                scan_urls = list(adapter.build_category_urls())
-                for term in set_info.get("search_terms", []):
-                    scan_urls.append(adapter.get_search_url(term))
-
-                for scan_url in scan_urls:
-                    try:
-                        product_ids = await adapter.fetch_category(client, scan_url)
-                    except Exception:
-                        logger.debug("Scan fetch failed for %s: %s", shop_id, scan_url)
-                        continue
-
-                    for pid in product_ids:
-                        # Check if we already know this product
-                        known = await state.get_known_product_ids()
-                        if pid in known:
-                            continue
-
-                        # Try to fetch and check if it matches search terms
-                        try:
-                            product_url = adapter.build_product_url(pid)
-                            data = await adapter.fetch_product(client, product_url)
-                            if data.name and _match_terms_in_text(
-                                data.name, set_info["search_terms"]
-                            ):
-                                is_new = await state.add_discovered(
-                                    pid, product_url,
-                                    name=data.name,
-                                    source=f"intelligence:{set_info['name']}",
-                                    shop=shop_id,
-                                )
-                                if is_new:
-                                    logger.info(
-                                        "Intelligence found: '%s' at %s [%s]",
-                                        data.name, shop_id, set_info["name"],
-                                    )
-                                    new_finds.append({
-                                        "product_id": pid,
-                                        "name": data.name,
-                                        "shop": shop_id,
-                                        "set_name": set_info["name"],
-                                        "url": product_url,
-                                    })
-                        except Exception:
-                            logger.debug(
-                                "Failed to fetch product %s from %s", pid, shop_id
-                            )
-            except Exception:
-                logger.exception(
-                    "Intelligence scan failed for %s on %s", set_info["name"], shop_id
-                )
-
-    return new_finds
+    """Run the keyword engine (replaces old hardcoded set scanning)."""
+    return await keyword_engine.run(state, client)

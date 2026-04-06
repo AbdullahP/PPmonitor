@@ -14,7 +14,7 @@ from monitor.rate_limiter import all_limiter_statuses, get_limiter
 from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
 
-INTELLIGENCE_INTERVAL = 600  # 10 minutes
+KEYWORD_SCAN_INTERVAL = 300  # 5 minutes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -175,22 +175,24 @@ async def poll_categories(state: StateManager, client: httpx.AsyncClient) -> Non
         await asyncio.sleep(settings.poll_interval_category)
 
 
-async def poll_intelligence(state: StateManager, client: httpx.AsyncClient) -> None:
-    """Periodically scan for upcoming sets across all shops."""
+async def poll_keywords(state: StateManager, client: httpx.AsyncClient) -> None:
+    """Periodically scan shops using keyword engine."""
     while True:
         try:
             new_finds = await scan_upcoming_sets(client, state)
             if new_finds:
-                logger.info("Intelligence scan found %d new products", len(new_finds))
+                logger.info("Keyword scan found %d new products", len(new_finds))
                 for find in new_finds:
-                    from monitor.alerts import send_discovery_alert
-                    await send_discovery_alert(
-                        find["product_id"], find["url"], name=find.get("name"), state=state
-                    )
+                    if find.get("notify_discord", True):
+                        from monitor.alerts import send_discovery_alert
+                        await send_discovery_alert(
+                            find["product_id"], find["url"],
+                            name=find.get("name"), state=state,
+                        )
         except Exception:
-            logger.exception("Intelligence scan cycle failed")
+            logger.exception("Keyword scan cycle failed")
 
-        await asyncio.sleep(INTELLIGENCE_INTERVAL)
+        await asyncio.sleep(KEYWORD_SCAN_INTERVAL)
 
 
 async def run() -> None:
@@ -207,7 +209,7 @@ async def run() -> None:
         await asyncio.gather(
             poll_products(state, client),
             poll_categories(state, client),
-            poll_intelligence(state, client),
+            poll_keywords(state, client),
         )
     finally:
         await client.aclose()

@@ -332,6 +332,67 @@ async def alerts_page(request: Request, state: StateManager = Depends(get_state)
 
 
 # ---------------------------------------------------------------------------
+# Keywords management
+# ---------------------------------------------------------------------------
+
+@app.get("/keywords", response_class=HTMLResponse)
+async def keywords_page(request: Request, state: StateManager = Depends(get_state)):
+    try:
+        keywords = await state.list_keywords(active_only=False)
+    except Exception:
+        logger.exception("Failed to list keywords")
+        keywords = []
+
+    try:
+        match_counts = await state.get_keyword_match_counts()
+    except Exception:
+        logger.exception("Failed to get keyword match counts")
+        match_counts = {}
+
+    return templates.TemplateResponse(request, "keywords.html", {
+        "active_page": "keywords",
+        "keywords": keywords,
+        "match_counts": match_counts,
+    })
+
+
+@app.post("/keywords/add")
+async def add_keyword(
+    keyword: str = Form(...),
+    match_type: str = Form(default="contains"),
+    priority: str = Form(default="normal"),
+    shops: list[str] = Form(default=[]),
+    auto_monitor: bool = Form(default=False),
+    notes: str = Form(default=""),
+    state: StateManager = Depends(get_state),
+):
+    all_shops = ["bol", "mediamarkt", "pocketgames",
+                 "catchyourcards", "games_island", "dreamland"]
+    selected_shops = shops if shops else all_shops
+    await state.add_keyword(
+        keyword=keyword,
+        match_type=match_type,
+        priority=priority,
+        shops=selected_shops,
+        auto_monitor=auto_monitor,
+        notes=notes or None,
+    )
+    return RedirectResponse("/keywords", status_code=303)
+
+
+@app.post("/keywords/delete/{keyword_id}")
+async def delete_keyword(keyword_id: int, state: StateManager = Depends(get_state)):
+    await state.delete_keyword(keyword_id)
+    return RedirectResponse("/keywords", status_code=303)
+
+
+@app.post("/keywords/toggle/{keyword_id}")
+async def toggle_keyword(keyword_id: int, state: StateManager = Depends(get_state)):
+    await state.toggle_keyword(keyword_id)
+    return RedirectResponse("/keywords", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # Add / remove product
 # ---------------------------------------------------------------------------
 

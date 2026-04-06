@@ -1,76 +1,80 @@
-"""Tests for the intelligence module."""
+"""Tests for the keyword-based intelligence module."""
 
-from datetime import date
-from unittest.mock import patch
+import re
 
-from monitor.intelligence import (
-    DAYS_BEFORE_RELEASE,
-    KNOWN_UPCOMING_SETS,
-    _match_terms_in_text,
-    get_upcoming_sets,
-)
+import pytest
+
+from monitor.intelligence import KeywordEngine, get_upcoming_sets
 
 
-def test_get_upcoming_sets():
+def test_get_upcoming_sets_returns_list():
+    """get_upcoming_sets now returns empty list (keywords are DB-driven)."""
     results = get_upcoming_sets()
     assert isinstance(results, list)
-    assert len(results) == len(KNOWN_UPCOMING_SETS)
-    for item in results:
-        assert "days_until_release" in item
-        assert "is_within_window" in item
-        assert "is_released" in item
-        assert "name" in item
-        assert "release_date" in item
 
 
-def test_match_terms_in_text():
-    # Exact substring match (term is substring of text)
-    assert _match_terms_in_text(
-        "Pokemon Perfect Order Elite Trainer Box",
-        ["perfect order"],
+@pytest.mark.asyncio
+async def test_keyword_engine_contains_match():
+    engine = KeywordEngine()
+    keywords = [
+        {"keyword": "perfect order", "match_type": "contains"},
+        {"keyword": "chaos rising", "match_type": "contains"},
+    ]
+    match = await engine.matches_any_keyword(
+        "Pokemon Perfect Order Elite Trainer Box", keywords
     )
-    assert _match_terms_in_text(
-        "Mega Zygarde EX Premium Collection",
-        ["mega zygarde ex"],
+    assert match is not None
+    assert match["keyword"] == "perfect order"
+
+
+@pytest.mark.asyncio
+async def test_keyword_engine_exact_match():
+    engine = KeywordEngine()
+    keywords = [
+        {"keyword": "perfect order etb", "match_type": "exact"},
+    ]
+    # Exact match succeeds (case-insensitive)
+    match = await engine.matches_any_keyword("Perfect Order ETB", keywords)
+    assert match is not None
+
+    # Partial string should NOT match exact
+    match = await engine.matches_any_keyword(
+        "Pokemon Perfect Order ETB Box", keywords
     )
-    assert not _match_terms_in_text(
-        "Pokemon Prismatic Evolutions",
-        ["perfect order", "chaos rising"],
+    assert match is None
+
+
+@pytest.mark.asyncio
+async def test_keyword_engine_regex_match():
+    engine = KeywordEngine()
+    keywords = [
+        {"keyword": r"mega \w+ ex", "match_type": "regex"},
+    ]
+    match = await engine.matches_any_keyword(
+        "Mega Zygarde EX Premium Collection", keywords
     )
-    # Case insensitive
-    assert _match_terms_in_text("PERFECT ORDER BOX", ["perfect order"])
+    assert match is not None
+
+    match = await engine.matches_any_keyword("Regular Booster Box", keywords)
+    assert match is None
 
 
-@patch("monitor.intelligence.date")
-def test_set_within_window(mock_date):
-    """A set 10 days from release should be within the monitoring window."""
-    first_set = KNOWN_UPCOMING_SETS[0]
-    release = date.fromisoformat(first_set["release_date"])
-    fake_today = date.fromordinal(release.toordinal() - 10)
-    mock_date.today.return_value = fake_today
-    mock_date.fromisoformat = date.fromisoformat
-    mock_date.side_effect = lambda *a, **k: date(*a, **k)
-
-    results = get_upcoming_sets()
-    target = next(r for r in results if r["name"] == first_set["name"])
-    assert target["days_until_release"] == 10
-    assert target["is_within_window"] is True
-    assert target["is_released"] is False
+@pytest.mark.asyncio
+async def test_keyword_engine_no_match():
+    engine = KeywordEngine()
+    keywords = [
+        {"keyword": "perfect order", "match_type": "contains"},
+        {"keyword": "chaos rising", "match_type": "contains"},
+    ]
+    match = await engine.matches_any_keyword(
+        "Pokemon Prismatic Evolutions", keywords
+    )
+    assert match is None
 
 
-@patch("monitor.intelligence.date")
-def test_set_outside_window(mock_date):
-    """A set 30 days from release should NOT be within the monitoring window."""
-    first_set = KNOWN_UPCOMING_SETS[0]
-    release = date.fromisoformat(first_set["release_date"])
-    fake_today = date.fromordinal(release.toordinal() - 30)
-    mock_date.today.return_value = fake_today
-    mock_date.fromisoformat = date.fromisoformat
-    mock_date.side_effect = lambda *a, **k: date(*a, **k)
-
-    results = get_upcoming_sets()
-    target = next(r for r in results if r["name"] == first_set["name"])
-    assert target["days_until_release"] == 30
-    assert 30 > DAYS_BEFORE_RELEASE  # sanity check
-    assert target["is_within_window"] is False
-    assert target["is_released"] is False
+@pytest.mark.asyncio
+async def test_keyword_engine_case_insensitive():
+    engine = KeywordEngine()
+    keywords = [{"keyword": "perfect order", "match_type": "contains"}]
+    match = await engine.matches_any_keyword("PERFECT ORDER BOX", keywords)
+    assert match is not None

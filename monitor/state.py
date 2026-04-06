@@ -248,6 +248,91 @@ class StateManager:
             ids.update(r["product_id"] for r in discovered)
             return ids
 
+    # ----- Keywords -----
+
+    async def list_keywords(self, active_only: bool = True) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            if active_only:
+                rows = await conn.fetch(
+                    "SELECT * FROM keywords WHERE is_active = TRUE ORDER BY created_at DESC"
+                )
+            else:
+                rows = await conn.fetch("SELECT * FROM keywords ORDER BY created_at DESC")
+            result = []
+            for r in rows:
+                d = dict(r)
+                # Parse JSONB shops field if it's a string
+                if isinstance(d.get("shops"), str):
+                    d["shops"] = json.loads(d["shops"])
+                result.append(d)
+            return result
+
+    async def add_keyword(
+        self, keyword: str, match_type: str = "contains",
+        priority: str = "normal", shops: list[str] | None = None,
+        auto_monitor: bool = True, notify_discord: bool = True,
+        notes: str | None = None,
+    ) -> dict:
+        if shops is None:
+            shops = ["bol", "mediamarkt", "pocketgames",
+                     "catchyourcards", "games_island", "dreamland"]
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO keywords
+                   (keyword, match_type, priority, shops, auto_monitor, notify_discord, notes)
+                   VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+                   RETURNING *""",
+                keyword, match_type, priority, json.dumps(shops),
+                auto_monitor, notify_discord, notes,
+            )
+            return dict(row)
+
+    async def delete_keyword(self, keyword_id: int) -> bool:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM keywords WHERE id = $1", keyword_id
+            )
+            return result == "DELETE 1"
+
+    async def toggle_keyword(self, keyword_id: int) -> bool:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE keywords SET is_active = NOT is_active WHERE id = $1",
+                keyword_id,
+            )
+            return result == "UPDATE 1"
+
+    async def get_keyword_match_counts(self) -> dict[int, int]:
+        """Count how many monitored products match each keyword (by name contains)."""
+        async with self._pool.acquire() as conn:
+            keywords = await conn.fetch(
+                "SELECT id, keyword, match_type FROM keywords"
+            )
+            products = await conn.fetch(
+                "SELECT name FROM products WHERE is_active = true AND name IS NOT NULL"
+            )
+            counts: dict[int, int] = {}
+            product_names = [(r["name"] or "").lower() for r in products]
+            for kw in keywords:
+                kw_id = kw["id"]
+                kw_text = (kw["keyword"] or "").lower()
+                match_type = kw["match_type"] or "contains"
+                count = 0
+                for pname in product_names:
+                    if match_type == "contains" and kw_text in pname:
+                        count += 1
+                    elif match_type == "exact" and kw_text == pname:
+                        count += 1
+                    elif match_type == "regex":
+                        import re
+                        try:
+                            if re.search(kw_text, pname, re.IGNORECASE):
+                                count += 1
+                        except re.error:
+                            pass
+                counts[kw_id] = count
+            return counts
+
     # ----- System heartbeat -----
 
     async def write_heartbeat(self, products_polled_count: int, shop_status: dict | None = None) -> None:

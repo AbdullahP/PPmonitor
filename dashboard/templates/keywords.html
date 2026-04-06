@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Keywords - Pokémon Monitor{% endblock %}
+{% block page_title %}Keywords{% endblock %}
+{% block content %}
+
+<!-- Add Keyword Form -->
+<div class="card">
+  <div class="card-body">
+    <div class="section-title">Add Keyword</div>
+    <form method="POST" action="/keywords/add">
+      <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; margin-bottom:16px">
+        <div>
+          <label>Keyword</label>
+          <input type="text" name="keyword" placeholder="e.g. perfect order" required>
+        </div>
+        <div>
+          <label>Match Type</label>
+          <select name="match_type">
+            <option value="contains">Contains</option>
+            <option value="exact">Exact</option>
+            <option value="regex">Regex</option>
+          </select>
+        </div>
+        <div>
+          <label>Priority</label>
+          <select name="priority">
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:16px; margin-bottom:16px; align-items:start">
+        <div>
+          <label>Shops</label>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px">
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="shops" value="bol" checked style="width:auto; padding:0"> bol.com
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="shops" value="mediamarkt" checked style="width:auto; padding:0"> MediaMarkt
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="shops" value="pocketgames" checked style="width:auto; padding:0"> PocketGames
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="shops" value="catchyourcards" checked style="width:auto; padding:0"> CatchYourCards
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="shops" value="games_island" checked style="width:auto; padding:0"> Games Island
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="shops" value="dreamland" checked style="width:auto; padding:0"> Dreamland
+            </label>
+          </div>
+        </div>
+        <div>
+          <label>Options</label>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px">
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="auto_monitor" value="true" style="width:auto; padding:0"> Auto-monitor
+            </label>
+          </div>
+        </div>
+        <div>
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Optional description">
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end">
+        <button type="submit" class="btn btn-primary">Add Keyword</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Keywords Table -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Active Keywords</span>
+    <span class="card-header-sub">{{ keywords|length }} total</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Keyword</th>
+        <th>Match Type</th>
+        <th>Priority</th>
+        <th>Shops</th>
+        <th>Auto Monitor</th>
+        <th>Matches</th>
+        <th>Active</th>
+        <th>Notes</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for kw in keywords %}
+      <tr{% if not kw.is_active %} style="opacity:0.5"{% endif %}>
+        <td style="font-weight:500">{{ kw.keyword }}</td>
+        <td><span class="pill pill--secondary">{{ kw.match_type }}</span></td>
+        <td>
+          {% if kw.priority == 'high' %}
+            <span class="pill pill--error">high</span>
+          {% elif kw.priority == 'low' %}
+            <span class="pill pill--gray">low</span>
+          {% else %}
+            <span class="pill pill--primary">normal</span>
+          {% endif %}
+        </td>
+        <td class="text-xs text-muted">
+          {% set shops = kw.shops %}
+          {% if shops is string %}
+            {{ shops }}
+          {% elif shops %}
+            {{ shops|join(', ') }}
+          {% else %}
+            all
+          {% endif %}
+        </td>
+        <td>
+          {% if kw.auto_monitor %}
+            <span class="pill pill--primary">yes</span>
+          {% else %}
+            <span class="pill pill--gray">no</span>
+          {% endif %}
+        </td>
+        <td style="font-weight:700">{{ match_counts.get(kw.id, 0) }}</td>
+        <td>
+          {% if kw.is_active %}
+            <span class="status status--healthy"><span class="status-dot"></span> active</span>
+          {% else %}
+            <span class="status status--dead"><span class="status-dot"></span> inactive</span>
+          {% endif %}
+        </td>
+        <td class="text-xs text-muted">{{ kw.notes or '-' }}</td>
+        <td style="white-space:nowrap">
+          <form method="POST" action="/keywords/toggle/{{ kw.id }}" style="display:inline">
+            <button type="submit" class="btn-monitor">
+              {% if kw.is_active %}Disable{% else %}Enable{% endif %}
+            </button>
+          </form>
+          <form method="POST" action="/keywords/delete/{{ kw.id }}" style="display:inline; margin-left:8px">
+            <button type="submit" class="btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not keywords %}
+      <tr><td colspan="9" class="text-center text-muted" style="padding:32px 24px">No keywords configured yet</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
