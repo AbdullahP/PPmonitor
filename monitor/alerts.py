@@ -1,5 +1,7 @@
-"""Discord webhook alert sender."""
+"""Discord webhook alert sender with delivery tracking."""
 
+import asyncio
+import json as _json
 import logging
 from datetime import datetime, timezone
 
@@ -12,6 +14,7 @@ from monitor.state import StateManager
 logger = logging.getLogger(__name__)
 
 ERROR_ALERT_THRESHOLD = 3  # Fire error alert after N consecutive failures
+WEBHOOK_DELAY = 1.0  # seconds between webhook calls to avoid rate limits
 
 SHOP_EMOJI: dict[str, str] = {
     "bol": "\U0001f7e0",
@@ -24,18 +27,113 @@ SHOP_EMOJI: dict[str, str] = {
     "pokemoncenter": "\U0001f534",
 }
 
+# Map webhook URLs to their type name for logging
+_WEBHOOK_TYPES = {}
 
-async def _post_webhook(webhook_url: str, payload: dict) -> None:
+
+def _webhook_type(url: str) -> str:
+    """Identify which webhook type a URL corresponds to."""
+    if url == settings.discord_webhook_url:
+        return "public"
+    if url == settings.discord_admin_webhook:
+        return "admin"
+    if url == settings.discord_discovery_webhook:
+        return "discovery"
+    return "unknown"
+
+
+async def _post_webhook(
+    webhook_url: str,
+    payload: dict,
+    state: StateManager | None = None,
+    alert_id: int | None = None,
+) -> dict:
+    """Post to Discord webhook with delivery tracking.
+
+    Returns dict with 'ok', 'status_code', 'error' keys.
+    """
+    wh_type = _webhook_type(webhook_url)
+    payload_snippet = _json.dumps(payload)[:200]
+
     if not settings.discord_enabled:
         logger.info("Discord disabled, skipping webhook post")
-        return
+        return {"ok": False, "status_code": 0, "error": "Discord disabled"}
+
     if not webhook_url:
         logger.warning("Webhook URL not configured, skipping alert")
-        return
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(webhook_url, json=payload)
-        if resp.status_code >= 400:
-            logger.error("Webhook POST failed: %s %s", resp.status_code, resp.text)
+        return {"ok": False, "status_code": 0, "error": "URL not configured"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(webhook_url, json=payload)
+            status = resp.status_code
+            body = resp.text
+
+            if status == 429:
+                # Rate limited — extract retry_after and wait
+                retry_after = 5.0
+                try:
+                    data = resp.json()
+                    retry_after = data.get("retry_after", 5.0)
+                except Exception:
+                    pass
+                logger.warning(
+                    "Discord rate limited (%s), retrying in %.1fs",
+                    wh_type, retry_after,
+                )
+                await asyncio.sleep(retry_after)
+                # Retry once
+                resp = await client.post(webhook_url, json=payload)
+                status = resp.status_code
+                body = resp.text
+
+            if status not in (200, 204):
+                logger.error(
+                    "Discord webhook failed (%s): HTTP %d — %s",
+                    wh_type, status, body[:200],
+                )
+                # Log to webhook_log table
+                if state:
+                    await state.log_webhook(
+                        wh_type, status, success=False,
+                        error_message=body[:500],
+                        payload_snippet=payload_snippet,
+                    )
+                    if alert_id:
+                        await state.update_alert_delivery(
+                            alert_id, sent=False,
+                            status_code=status, error=body[:500],
+                        )
+                return {"ok": False, "status_code": status, "error": body[:500]}
+
+            logger.info("Discord webhook delivered (%s): HTTP %d", wh_type, status)
+            if state:
+                await state.log_webhook(
+                    wh_type, status, success=True,
+                    payload_snippet=payload_snippet,
+                )
+                if alert_id:
+                    await state.update_alert_delivery(
+                        alert_id, sent=True, status_code=status,
+                    )
+            # Delay between webhook calls to avoid rate limits
+            await asyncio.sleep(WEBHOOK_DELAY)
+            return {"ok": True, "status_code": status, "error": None}
+
+    except Exception as exc:
+        error_msg = f"{type(exc).__name__}: {exc}"
+        logger.error("Discord webhook exception (%s): %s", wh_type, error_msg)
+        if state:
+            await state.log_webhook(
+                wh_type, 0, success=False,
+                error_message=error_msg[:500],
+                payload_snippet=payload_snippet,
+            )
+            if alert_id:
+                await state.update_alert_delivery(
+                    alert_id, sent=False, status_code=0, error=error_msg[:500],
+                )
+        return {"ok": False, "status_code": 0, "error": error_msg}
 
 
 async def send_stock_alert(
@@ -44,7 +142,7 @@ async def send_stock_alert(
     state: StateManager | None = None,
     shop: str = "bol",
 ) -> None:
-    """Stock available alert → public webhook with @everyone."""
+    """Stock available alert -> public webhook with @everyone."""
     emoji = SHOP_EMOJI.get(shop, "\U0001f7e0")
     display_name = product.name or product.product_id
     embed = {
@@ -62,11 +160,13 @@ async def send_stock_alert(
         "content": "@everyone Pokemon TCG stock detected!",
         "embeds": [embed],
     }
-    await _post_webhook(settings.discord_webhook_url, payload)
 
+    alert_id = None
     if state:
         msg = f"Stock alert: {product.name} - InStock - {redirect_url}"
-        await state.log_alert(product.product_id, "stock_change", msg)
+        alert_id = await state.log_alert(product.product_id, "stock_change", msg)
+
+    await _post_webhook(settings.discord_webhook_url, payload, state=state, alert_id=alert_id)
     logger.info("Stock alert sent for %s [%s]", product.product_id, shop)
 
 
@@ -75,7 +175,7 @@ async def send_out_of_stock_alert(
     state: StateManager | None = None,
     shop: str = "bol",
 ) -> None:
-    """Product went out of stock → public webhook, no ping."""
+    """Product went out of stock -> public webhook, no ping."""
     emoji = SHOP_EMOJI.get(shop, "\U0001f7e0")
     display_name = product.name or product.product_id
     embed = {
@@ -85,11 +185,13 @@ async def send_out_of_stock_alert(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     payload = {"embeds": [embed]}
-    await _post_webhook(settings.discord_webhook_url, payload)
 
+    alert_id = None
     if state:
         msg = f"OOS alert: {product.name} - OutOfStock"
-        await state.log_alert(product.product_id, "stock_change", msg)
+        alert_id = await state.log_alert(product.product_id, "stock_change", msg)
+
+    await _post_webhook(settings.discord_webhook_url, payload, state=state, alert_id=alert_id)
     logger.info("Out-of-stock alert sent for %s [%s]", product.product_id, shop)
 
 
@@ -101,7 +203,7 @@ async def send_error_alert(
     product_url: str | None = None,
     state: StateManager | None = None,
 ) -> None:
-    """Error alert → admin webhook. Only fires after ERROR_ALERT_THRESHOLD failures."""
+    """Error alert -> admin webhook. Only fires after ERROR_ALERT_THRESHOLD failures."""
     if consecutive_failures < ERROR_ALERT_THRESHOLD:
         return
 
@@ -116,18 +218,20 @@ async def send_error_alert(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     payload = {"embeds": [embed]}
-    await _post_webhook(settings.discord_admin_webhook, payload)
 
+    alert_id = None
     if state:
         msg = f"Error alert: {product_id} - {consecutive_failures} failures - {error_msg[:200]}"
-        await state.log_alert(product_id, "error", msg)
+        alert_id = await state.log_alert(product_id, "error", msg)
+
+    await _post_webhook(settings.discord_admin_webhook, payload, state=state, alert_id=alert_id)
     logger.warning("Error alert sent for %s (%d failures)", product_id, consecutive_failures)
 
 
 async def send_queue_alert(
     pc_url: str, state: StateManager | None = None
 ) -> None:
-    """Pokemon Center queue is active — alert users to join now."""
+    """Pokemon Center queue is active -- alert users to join now."""
     embed = {
         "title": "\u26a0\ufe0f Pok\u00e9mon Center Queue Active",
         "description": (
@@ -143,17 +247,19 @@ async def send_queue_alert(
         "content": "@everyone Pok\u00e9mon Center queue detected!",
         "embeds": [embed],
     }
-    await _post_webhook(settings.discord_webhook_url, payload)
 
+    alert_id = None
     if state:
-        await state.log_alert(None, "queue", f"PC queue active: {pc_url}")
+        alert_id = await state.log_alert(None, "queue", f"PC queue active: {pc_url}")
+
+    await _post_webhook(settings.discord_webhook_url, payload, state=state, alert_id=alert_id)
     logger.info("Queue alert sent for Pokemon Center: %s", pc_url)
 
 
 async def send_discovery_alert(
     product_id: str, url: str, name: str | None = None, state: StateManager | None = None
 ) -> None:
-    """New product discovered → discovery webhook."""
+    """New product discovered -> discovery webhook."""
     embed = {
         "title": f"New Product: {name or product_id}",
         "description": f"**Product ID:** {product_id}\n**URL:** {url}",
@@ -162,9 +268,41 @@ async def send_discovery_alert(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     payload = {"embeds": [embed]}
-    await _post_webhook(settings.discord_discovery_webhook, payload)
 
+    alert_id = None
     if state:
         msg = f"Discovery: {product_id} - {url}"
-        await state.log_alert(product_id, "discovery", msg)
+        alert_id = await state.log_alert(product_id, "discovery", msg)
+
+    await _post_webhook(settings.discord_discovery_webhook, payload, state=state, alert_id=alert_id)
     logger.info("Discovery alert sent for %s", product_id)
+
+
+async def test_all_webhooks() -> dict:
+    """Send a test message to all configured webhooks. Returns status per webhook."""
+    test_payload = {
+        "embeds": [{
+            "title": "Webhook Test",
+            "description": "This is a test message from Pokemon Monitor.",
+            "color": 0x7289DA,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }],
+    }
+
+    results = {}
+    for name, url in [
+        ("public_webhook", settings.discord_webhook_url),
+        ("admin_webhook", settings.discord_admin_webhook),
+        ("discovery_webhook", settings.discord_discovery_webhook),
+    ]:
+        if not url:
+            results[name] = {"status": 0, "ok": False, "error": "Not configured"}
+            continue
+        result = await _post_webhook(url, test_payload)
+        results[name] = {
+            "status": result["status_code"],
+            "ok": result["ok"],
+            "error": result.get("error"),
+        }
+
+    return results

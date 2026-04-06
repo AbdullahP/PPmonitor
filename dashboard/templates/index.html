@@ -75,6 +75,71 @@
   </div>
 </div>
 
+<!-- Discord Status -->
+<div class="card">
+  <div class="card-body">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+      <div class="section-title" style="margin-bottom:0">Discord Status</div>
+      <button onclick="testWebhooks(this)" class="btn-monitor">Test Webhooks</button>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px">
+      {% for wh_name, wh_label in [('public', 'Public'), ('admin', 'Admin'), ('discovery', 'Discovery')] %}
+      <div class="rl-card{% if discord_status.get(wh_name, {}).get('success') %}" style="border-left-color:var(--primary){% else %}" style="border-left-color:var(--error){% endif %}">
+        <div>
+          <div class="rl-shop">{{ wh_label }}</div>
+          {% if discord_status.get(wh_name) %}
+            {% if discord_status[wh_name].success %}
+              <div class="rl-detail" style="color:var(--primary)">Delivered {{ discord_status[wh_name].timestamp.strftime('%H:%M') if discord_status[wh_name].timestamp else '' }}</div>
+            {% else %}
+              <div class="rl-detail" style="color:var(--error)">Failed: HTTP {{ discord_status[wh_name].status_code }}</div>
+            {% endif %}
+          {% else %}
+            <div class="rl-detail">No data yet</div>
+          {% endif %}
+        </div>
+        <div style="text-align:right">
+          {% if discord_status.get(wh_name, {}).get('success') %}
+            <span style="color:var(--primary); font-size:1.2rem">&#10003;</span>
+          {% elif discord_status.get(wh_name) %}
+            <span style="color:var(--error); font-size:1.2rem">&#10007;</span>
+          {% else %}
+            <span style="color:var(--outline); font-size:1.2rem">?</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div id="webhook-test-result" style="margin-top:12px"></div>
+  </div>
+</div>
+<script>
+async function testWebhooks(btn) {
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+  const el = document.getElementById('webhook-test-result');
+  try {
+    const resp = await fetch('/api/test-webhook', {method: 'POST'});
+    const data = await resp.json();
+    let html = '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px">';
+    for (const [key, val] of Object.entries(data)) {
+      const label = key.replace('_', ' ');
+      const color = val.ok ? 'var(--primary)' : 'var(--error)';
+      const icon = val.ok ? '&#10003;' : '&#10007;';
+      const detail = val.ok ? 'HTTP ' + val.status : (val.error || 'Failed').substring(0, 40);
+      html += '<div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">';
+      html += '<span style="color:' + color + '">' + icon + '</span> <strong>' + label + '</strong><br>';
+      html += '<span style="color:var(--outline)">' + detail + '</span></div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--error); font-size:0.75rem">Test failed: ' + e.message + '</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Test Webhooks';
+}
+</script>
+
 <!-- Two-column layout: Rate Limiter + Upcoming Sets -->
 <div class="grid-2">
   <!-- Rate Limiter Status -->

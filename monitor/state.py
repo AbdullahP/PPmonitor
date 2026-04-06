@@ -180,12 +180,28 @@ class StateManager:
 
     # ----- Alerts sent -----
 
-    async def log_alert(self, product_id: str | None, alert_type: str, message: str) -> None:
+    async def log_alert(self, product_id: str | None, alert_type: str, message: str) -> int | None:
+        """Insert alert and return its ID for delivery tracking."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO alerts_sent (product_id, alert_type, message)
+                   VALUES ($1, $2, $3)
+                   RETURNING id""",
+                product_id, alert_type, message,
+            )
+            return row["id"] if row else None
+
+    async def update_alert_delivery(
+        self, alert_id: int, sent: bool,
+        status_code: int | None = None, error: str | None = None,
+    ) -> None:
+        """Update Discord delivery status on an alert row."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                """INSERT INTO alerts_sent (product_id, alert_type, message)
-                   VALUES ($1, $2, $3)""",
-                product_id, alert_type, message,
+                """UPDATE alerts_sent
+                   SET discord_sent = $1, discord_status_code = $2, discord_error = $3
+                   WHERE id = $4""",
+                sent, status_code, error, alert_id,
             )
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
@@ -201,6 +217,41 @@ class StateManager:
                 "SELECT COUNT(*) as cnt FROM alerts_sent WHERE timestamp >= CURRENT_DATE"
             )
             return row["cnt"]
+
+    async def get_discord_status(self) -> dict:
+        """Get last delivery status per webhook type."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT DISTINCT ON (webhook_type)
+                    webhook_type, success, status_code, error_message, timestamp
+                FROM webhook_log
+                ORDER BY webhook_type, timestamp DESC
+            """)
+            return {r["webhook_type"]: dict(r) for r in rows}
+
+    # ----- Webhook log -----
+
+    async def log_webhook(
+        self, webhook_type: str, status_code: int, success: bool = False,
+        error_message: str | None = None, payload_snippet: str | None = None,
+    ) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO webhook_log
+                   (webhook_type, status_code, success, error_message, payload_snippet)
+                   VALUES ($1, $2, $3, $4, $5)""",
+                webhook_type, status_code, success, error_message, payload_snippet,
+            )
+
+    async def get_webhook_errors(self, limit: int = 50) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT * FROM webhook_log
+                   WHERE success = false
+                   ORDER BY timestamp DESC LIMIT $1""",
+                limit,
+            )
+            return [dict(r) for r in rows]
 
     # ----- Discovered products -----
 

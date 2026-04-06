@@ -20,7 +20,12 @@
   </div>
 </form>
 
+<!-- Poll Errors -->
 <div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Poll Errors</span>
+    <span class="card-header-sub">{{ errors|length }} entries</span>
+  </div>
   <table>
     <thead>
       <tr>
@@ -43,5 +48,35 @@
     </tbody>
   </table>
 </div>
+
+<!-- Webhook Errors -->
+{% if webhook_errors %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Discord Webhook Errors</span>
+    <span class="card-header-sub">{{ webhook_errors|length }} failures</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Webhook</th>
+        <th>Status</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in webhook_errors %}
+      <tr>
+        <td class="text-muted nowrap text-xs">{{ w.timestamp.strftime('%Y-%m-%d %H:%M:%S') if w.timestamp else '-' }}</td>
+        <td><span class="pill pill--error">{{ w.webhook_type }}</span></td>
+        <td class="text-muted">{{ w.status_code or '-' }}</td>
+        <td style="color:var(--error); font-family:'SF Mono','Consolas',monospace; font-size:0.75rem">{{ w.error_message or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% endblock %}

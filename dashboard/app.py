@@ -156,6 +156,16 @@ async def health(state: StateManager = Depends(get_state)):
 
 
 # ---------------------------------------------------------------------------
+# Test webhooks API
+# ---------------------------------------------------------------------------
+
+@app.post("/api/test-webhook")
+async def api_test_webhook():
+    from monitor.alerts import test_all_webhooks
+    return await test_all_webhooks()
+
+
+# ---------------------------------------------------------------------------
 # Overview page
 # ---------------------------------------------------------------------------
 
@@ -202,6 +212,12 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
 
     rate_limiters = list(shop_health.values()) if shop_health else all_limiter_statuses()
 
+    try:
+        discord_status = await state.get_discord_status()
+    except Exception:
+        logger.exception("Failed to get discord status")
+        discord_status = {}
+
     return templates.TemplateResponse(request, "index.html", {
         "active_page": "overview",
         "products": products,
@@ -210,6 +226,7 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
         "discovered": discovered,
         "rate_limiters": rate_limiters,
         "upcoming_sets": get_upcoming_sets(),
+        "discord_status": discord_status,
     })
 
 
@@ -305,11 +322,18 @@ async def logs_page(
         logger.exception("Failed to list products")
         products = []
 
+    try:
+        webhook_errors = await state.get_webhook_errors(limit=50)
+    except Exception:
+        logger.exception("Failed to get webhook errors")
+        webhook_errors = []
+
     return templates.TemplateResponse(request, "logs.html", {
         "active_page": "logs",
         "errors": errors,
         "products": products,
         "selected_product": product_id,
+        "webhook_errors": webhook_errors,
     })
 
 
