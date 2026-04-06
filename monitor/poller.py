@@ -15,6 +15,8 @@ from monitor.shops.registry import SHOP_REGISTRY, get_adapter
 from monitor.state import StateManager
 
 KEYWORD_SCAN_INTERVAL = 300  # 5 minutes
+QUEUE_CHECK_INTERVAL = 60  # 1 minute
+QUEUE_ALERT_COOLDOWN = 600  # 10 minutes between queue alerts
 
 logging.basicConfig(
     level=logging.INFO,
@@ -195,6 +197,54 @@ async def poll_keywords(state: StateManager, client: httpx.AsyncClient) -> None:
         await asyncio.sleep(KEYWORD_SCAN_INTERVAL)
 
 
+async def poll_queue(state: StateManager, client: httpx.AsyncClient) -> None:
+    """Check Pokemon Center queue status every 60 seconds."""
+    from datetime import datetime, timezone
+    from monitor.shops.pokemoncenter import check_queue_status
+
+    while True:
+        try:
+            result = await check_queue_status(client)
+
+            if result["active"]:
+                # Check cooldown — don't spam alerts
+                heartbeat = await state.get_last_heartbeat()
+                last_alert = (
+                    heartbeat.get("last_queue_alert") if heartbeat else None
+                )
+                now = datetime.now(timezone.utc)
+
+                should_alert = True
+                if last_alert:
+                    elapsed = (now - last_alert).total_seconds()
+                    if elapsed < QUEUE_ALERT_COOLDOWN:
+                        should_alert = False
+                        logger.debug(
+                            "Queue active but cooldown (%ds remaining)",
+                            QUEUE_ALERT_COOLDOWN - elapsed,
+                        )
+
+                if should_alert:
+                    from monitor.alerts import send_queue_alert
+                    await send_queue_alert(result["url"], state=state)
+                    # Update last_queue_alert in heartbeat
+                    async with state._pool.acquire() as conn:
+                        await conn.execute(
+                            """UPDATE system_heartbeat
+                               SET last_queue_alert = $1
+                               WHERE timestamp = (
+                                   SELECT timestamp FROM system_heartbeat
+                                   ORDER BY timestamp DESC LIMIT 1
+                               )""",
+                            now,
+                        )
+                    logger.info("Pokemon Center queue detected and alert sent")
+        except Exception:
+            logger.exception("Queue check failed")
+
+        await asyncio.sleep(QUEUE_CHECK_INTERVAL)
+
+
 async def run() -> None:
     """Main entry point: start all polling tasks."""
     logger.info("Starting Pokemon TCG Stock Monitor")
@@ -210,6 +260,7 @@ async def run() -> None:
             poll_products(state, client),
             poll_categories(state, client),
             poll_keywords(state, client),
+            poll_queue(state, client),
         )
     finally:
         await client.aclose()

@@ -22,6 +22,7 @@ SHOP_EMOJI: dict[str, str] = {
     "dreamland": "\U0001f535",
     "amazon_nl": "\U0001f4e6",
     "amazon_de": "\U0001f4e6",
+    "pokemoncenter": "\U0001f534",
 }
 
 
@@ -122,6 +123,32 @@ async def send_error_alert(
         msg = f"Error alert: {product_id} - {consecutive_failures} failures - {error_msg[:200]}"
         await state.log_alert(product_id, "error", msg)
     logger.warning("Error alert sent for %s (%d failures)", product_id, consecutive_failures)
+
+
+async def send_queue_alert(
+    pc_url: str, state: StateManager | None = None
+) -> None:
+    """Pokemon Center queue is active — alert users to join now."""
+    embed = {
+        "title": "\u26a0\ufe0f Pok\u00e9mon Center Queue Active",
+        "description": (
+            "The Pok\u00e9mon Center virtual queue is live!\n"
+            "**Join now to get ahead of the crowd.**\n\n"
+            f"[\u2192 Enter the queue]({pc_url})"
+        ),
+        "color": 0xFFCC00,
+        "footer": {"text": "Join early = better position"},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    payload = {
+        "content": "@everyone Pok\u00e9mon Center queue detected!",
+        "embeds": [embed],
+    }
+    await _post_webhook(settings.discord_webhook_url, payload)
+
+    if state:
+        await state.log_alert(None, "queue", f"PC queue active: {pc_url}")
+    logger.info("Queue alert sent for Pokemon Center: %s", pc_url)
 
 
 async def send_discovery_alert(
