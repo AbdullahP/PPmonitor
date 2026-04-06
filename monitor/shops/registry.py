@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from monitor.shops.amazon import AmazonDEAdapter, AmazonNLAdapter
 from monitor.shops.base import ShopAdapter
 from monitor.shops.bol import BolAdapter
 from monitor.shops.catchyourcards import CatchYourCardsAdapter
@@ -17,6 +18,8 @@ SHOP_REGISTRY: dict[str, type[ShopAdapter]] = {
     "catchyourcards": CatchYourCardsAdapter,
     "games_island": GamesIslandAdapter,
     "dreamland": DreamlandAdapter,
+    "amazon_nl": AmazonNLAdapter,
+    "amazon_de": AmazonDEAdapter,
 }
 
 

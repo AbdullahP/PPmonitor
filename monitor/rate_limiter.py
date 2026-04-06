@@ -107,10 +107,18 @@ class AdaptiveRateLimiter:
 _limiters: dict[str, AdaptiveRateLimiter] = {}
 
 
+# Shops that need higher default intervals to avoid blocks
+_SHOP_BASE_INTERVALS: dict[str, float] = {
+    "amazon_nl": 30.0,
+    "amazon_de": 30.0,
+}
+
+
 def get_limiter(shop_id: str) -> AdaptiveRateLimiter:
     """Get or create a rate limiter for a shop."""
     if shop_id not in _limiters:
-        _limiters[shop_id] = AdaptiveRateLimiter(shop_id)
+        base = _SHOP_BASE_INTERVALS.get(shop_id, DEFAULT_INTERVAL)
+        _limiters[shop_id] = AdaptiveRateLimiter(shop_id, base_interval=base)
     return _limiters[shop_id]
 
 

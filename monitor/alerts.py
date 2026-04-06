@@ -20,6 +20,8 @@ SHOP_EMOJI: dict[str, str] = {
     "catchyourcards": "\U0001f7e1",
     "games_island": "\U0001f7e2",
     "dreamland": "\U0001f535",
+    "amazon_nl": "\U0001f4e6",
+    "amazon_de": "\U0001f4e6",
 }
 
 

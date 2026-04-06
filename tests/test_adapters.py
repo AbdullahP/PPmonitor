@@ -274,8 +274,11 @@ def test_dreamland_html_fallback():
 
 
 def test_registry_all_shops():
-    assert len(SHOP_REGISTRY) == 6
-    expected = {"bol", "mediamarkt", "pocketgames", "catchyourcards", "games_island", "dreamland"}
+    assert len(SHOP_REGISTRY) == 8
+    expected = {
+        "bol", "mediamarkt", "pocketgames", "catchyourcards",
+        "games_island", "dreamland", "amazon_nl", "amazon_de",
+    }
     assert set(SHOP_REGISTRY.keys()) == expected
 
 

@@ -420,14 +420,23 @@ async def add_product(
             shop = "games_island"
         elif "dreamland" in url_lower:
             shop = "dreamland"
+        elif "amazon.nl" in url_lower:
+            shop = "amazon_nl"
+        elif "amazon.de" in url_lower:
+            shop = "amazon_de"
         else:
             shop = "bol"
 
-    # Extract product_id: numeric ID for bol/mediamarkt, slug for others
+    # Extract product_id: numeric ID for bol/mediamarkt, ASIN for Amazon, slug for others
     if shop in ("bol", "mediamarkt"):
         match = re.search(r'/(\d{5,})(?:[/.]|$)', url)
         if not match:
             raise HTTPException(400, "Could not extract product ID from URL")
+        product_id = match.group(1)
+    elif shop in ("amazon_nl", "amazon_de"):
+        match = re.search(r'/(?:dp|gp/product)/([A-Z0-9]{10})(?:[/?]|$)', url)
+        if not match:
+            raise HTTPException(400, "Could not extract ASIN from Amazon URL")
         product_id = match.group(1)
     else:
         # Use last path segment as ID
