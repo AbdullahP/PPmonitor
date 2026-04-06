@@ -1,7 +1,5 @@
 """Tests for the keyword-based intelligence module."""
 
-import re
-
 import pytest
 
 from monitor.intelligence import KeywordEngine, get_upcoming_sets

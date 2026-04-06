@@ -8,11 +8,10 @@ against product names found on category/search pages.
 import json
 import logging
 import re
-from datetime import date
 
 import httpx
 
-from monitor.shops.registry import SHOP_REGISTRY, get_adapter
+from monitor.shops.registry import SHOP_REGISTRY
 from monitor.state import StateManager
 
 logger = logging.getLogger(__name__)
