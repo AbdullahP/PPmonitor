@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 
 DAYS_BEFORE_RELEASE = 14
 
+_POKEMON_TERMS = (
+    "pokemon", "pokémon", "tcg", "trading card", "booster",
+    "trainer box", "etb", "pikachu", "charizard",
+)
+
+
+def is_pokemon_product(name: str) -> bool:
+    """Check that a product name is actually Pokemon-related."""
+    name_lower = name.lower()
+    return any(term in name_lower for term in _POKEMON_TERMS)
+
 
 def get_upcoming_sets() -> list[dict]:
     """Return empty list — upcoming sets are now driven by keywords."""
@@ -108,6 +119,9 @@ class KeywordEngine:
                         product_url = adapter.build_product_url(pid)
                         data = await adapter.fetch_product(client, product_url)
                         if not data or not data.name:
+                            continue
+
+                        if not is_pokemon_product(data.name):
                             continue
 
                         match = await self.matches_any_keyword(
