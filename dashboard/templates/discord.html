@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Discord - Pokémon Monitor{% endblock %}
+{% block page_title %}Discord Servers{% endblock %}
+{% block content %}
+
+<!-- Add Server Form -->
+<div class="card">
+  <div class="card-body">
+    <div class="section-title">Add Server</div>
+    <form method="POST" action="/discord/add">
+      <div style="display:grid; grid-template-columns:1fr 2fr; gap:16px; margin-bottom:16px">
+        <div>
+          <label>Server Name</label>
+          <input type="text" name="name" placeholder="e.g. Production Community" required>
+        </div>
+        <div>
+          <label>Description</label>
+          <input type="text" name="description" placeholder="Optional description">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px">
+        <div>
+          <label>Public Webhook (stock alerts)</label>
+          <input type="url" name="public_webhook" placeholder="https://discord.com/api/webhooks/...">
+        </div>
+        <div>
+          <label>Admin Webhook (errors)</label>
+          <input type="url" name="admin_webhook" placeholder="https://discord.com/api/webhooks/...">
+        </div>
+        <div>
+          <label>Discovery Webhook (new products)</label>
+          <input type="url" name="discovery_webhook" placeholder="https://discord.com/api/webhooks/...">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:16px; margin-bottom:16px">
+        <div>
+          <label>Bot Token (optional)</label>
+          <input type="text" name="bot_token" placeholder="Bot token">
+        </div>
+        <div>
+          <label>Channel ID (optional)</label>
+          <input type="text" name="channel_id" placeholder="Channel ID">
+        </div>
+        <div>
+          <label>Alert Types</label>
+          <div style="display:flex; gap:16px; margin-top:4px; flex-wrap:wrap">
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="send_stock_alerts" value="true" checked style="width:auto; padding:0"> Stock
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="send_discovery_alerts" value="true" checked style="width:auto; padding:0"> Discovery
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="send_admin_alerts" value="true" checked style="width:auto; padding:0"> Admin
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:normal; font-size:0.8rem; color:var(--on-surface); margin-bottom:0">
+              <input type="checkbox" name="send_queue_alerts" value="true" checked style="width:auto; padding:0"> Queue
+            </label>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end">
+        <button type="submit" class="btn btn-primary">Add Server</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Servers Table -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Configured Servers</span>
+    <span class="card-header-sub">{{ servers|length }} total</span>
+  </div>
+  {% if servers %}
+  <div style="overflow-x:auto">
+    {% for s in servers %}
+    <div style="padding:20px 24px; border-bottom:1px solid rgba(66,71,84,0.1){% if not s.is_active %}; opacity:0.5{% endif %}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px">
+        <div>
+          <div style="font-weight:700; font-size:0.95rem">
+            {{ s.name }}
+            {% if s.is_default %}
+              <span class="pill pill--primary" style="margin-left:8px">default</span>
+            {% endif %}
+          </div>
+          {% if s.description %}
+            <div class="text-xs text-muted" style="margin-top:2px">{{ s.description }}</div>
+          {% endif %}
+        </div>
+        <div style="display:flex; gap:8px; align-items:center">
+          <!-- Test result badge -->
+          {% if s.last_test_result == 'ok' %}
+            <span class="pill pill--primary">Tested OK</span>
+          {% elif s.last_test_result == 'failed' %}
+            <span class="pill pill--error">Test Failed</span>
+          {% else %}
+            <span class="pill pill--gray">Untested</span>
+          {% endif %}
+
+          {% if s.is_active %}
+            <span class="status status--healthy"><span class="status-dot"></span> active</span>
+          {% else %}
+            <span class="status status--dead"><span class="status-dot"></span> inactive</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Webhook status row -->
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px">
+        <div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">
+          {% if s.public_webhook %}
+            <span style="color:var(--primary)">&#10003;</span>
+          {% else %}
+            <span style="color:var(--outline)">&#10007;</span>
+          {% endif %}
+          <strong>Public</strong>
+          {% if s.send_stock_alerts %}<span class="text-muted"> (stock + queue)</span>{% endif %}
+        </div>
+        <div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">
+          {% if s.admin_webhook %}
+            <span style="color:var(--primary)">&#10003;</span>
+          {% else %}
+            <span style="color:var(--outline)">&#10007;</span>
+          {% endif %}
+          <strong>Admin</strong>
+          {% if s.send_admin_alerts %}<span class="text-muted"> (errors)</span>{% endif %}
+        </div>
+        <div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">
+          {% if s.discovery_webhook %}
+            <span style="color:var(--primary)">&#10003;</span>
+          {% else %}
+            <span style="color:var(--outline)">&#10007;</span>
+          {% endif %}
+          <strong>Discovery</strong>
+          {% if s.send_discovery_alerts %}<span class="text-muted"> (new products)</span>{% endif %}
+        </div>
+      </div>
+
+      {% if s.last_test_error %}
+        <div style="font-size:0.7rem; color:var(--error); margin-bottom:8px; font-family:'SF Mono','Consolas',monospace">
+          {{ s.last_test_error[:200] }}
+        </div>
+      {% endif %}
+
+      <!-- Actions -->
+      <div style="display:flex; gap:8px; align-items:center">
+        <button onclick="testServer({{ s.id }}, this)" class="btn-monitor">Test</button>
+        <form method="POST" action="/discord/{{ s.id }}/toggle" style="display:inline">
+          <button type="submit" class="btn-monitor">
+            {% if s.is_active %}Disable{% else %}Enable{% endif %}
+          </button>
+        </form>
+        <form method="POST" action="/discord/{{ s.id }}/delete" style="display:inline">
+          <button type="submit" class="btn-danger">Delete</button>
+        </form>
+        <span id="test-result-{{ s.id }}" style="font-size:0.75rem; margin-left:8px"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="padding:32px 24px; text-align:center" class="text-muted">
+    No Discord servers configured. Add one above or they will be auto-seeded from environment variables on next startup.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+async function testServer(id, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+  const el = document.getElementById('test-result-' + id);
+  try {
+    const resp = await fetch('/discord/' + id + '/test', {method: 'POST'});
+    const data = await resp.json();
+    const parts = [];
+    for (const [key, val] of Object.entries(data)) {
+      if (!val.configured) continue;
+      const icon = val.ok ? '\u2713' : '\u2717';
+      const color = val.ok ? 'var(--primary)' : 'var(--error)';
+      parts.push('<span style="color:' + color + '">' + icon + ' ' + key + '</span>');
+    }
+    el.innerHTML = parts.join(' &nbsp; ') || 'No webhooks configured';
+    // Reload after a moment to update badges
+    setTimeout(() => location.reload(), 2000);
+  } catch (e) {
+    el.innerHTML = '<span style="color:var(--error)">Error: ' + e.message + '</span>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Test';
+}
+</script>
+
+{% endblock %}

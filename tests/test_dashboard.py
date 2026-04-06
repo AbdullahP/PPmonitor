@@ -17,6 +17,7 @@ def _mock_state():
     state.get_alerts = AsyncMock(return_value=[])
     state.get_discord_status = AsyncMock(return_value={})
     state.get_webhook_errors = AsyncMock(return_value=[])
+    state.list_discord_servers = AsyncMock(return_value=[])
     return state
 
 

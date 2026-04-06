@@ -24,6 +24,7 @@ class StateManager:
         pool = await cls._connect_with_retry(url)
         mgr = cls(pool)
         await mgr._run_migrations()
+        await mgr.seed_discord_servers_from_env()
         return mgr
 
     @staticmethod
@@ -383,6 +384,101 @@ class StateManager:
                             pass
                 counts[kw_id] = count
             return counts
+
+    # ----- Discord servers -----
+
+    async def list_discord_servers(self, active_only: bool = False) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            if active_only:
+                rows = await conn.fetch(
+                    "SELECT * FROM discord_servers WHERE is_active = TRUE ORDER BY created_at"
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM discord_servers ORDER BY created_at"
+                )
+            return [dict(r) for r in rows]
+
+    async def get_discord_server(self, server_id: int) -> dict | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM discord_servers WHERE id = $1", server_id
+            )
+            return dict(row) if row else None
+
+    async def add_discord_server(
+        self, name: str, description: str | None = None,
+        public_webhook: str | None = None, admin_webhook: str | None = None,
+        discovery_webhook: str | None = None, bot_token: str | None = None,
+        channel_id: str | None = None, is_default: bool = False,
+        send_stock_alerts: bool = True, send_discovery_alerts: bool = True,
+        send_admin_alerts: bool = True, send_queue_alerts: bool = True,
+    ) -> dict:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO discord_servers
+                   (name, description, public_webhook, admin_webhook,
+                    discovery_webhook, bot_token, channel_id, is_default,
+                    send_stock_alerts, send_discovery_alerts,
+                    send_admin_alerts, send_queue_alerts)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                   RETURNING *""",
+                name, description, public_webhook, admin_webhook,
+                discovery_webhook, bot_token, channel_id, is_default,
+                send_stock_alerts, send_discovery_alerts,
+                send_admin_alerts, send_queue_alerts,
+            )
+            return dict(row)
+
+    async def update_discord_server(self, server_id: int, **kwargs) -> None:
+        if not kwargs:
+            return
+        sets = []
+        values = []
+        for i, (key, val) in enumerate(kwargs.items(), start=1):
+            sets.append(f"{key} = ${i}")
+            values.append(val)
+        values.append(server_id)
+        query = f"UPDATE discord_servers SET {', '.join(sets)} WHERE id = ${len(values)}"
+        async with self._pool.acquire() as conn:
+            await conn.execute(query, *values)
+
+    async def delete_discord_server(self, server_id: int) -> bool:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM discord_servers WHERE id = $1", server_id
+            )
+            return result == "DELETE 1"
+
+    async def toggle_discord_server(self, server_id: int) -> bool:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE discord_servers SET is_active = NOT is_active WHERE id = $1",
+                server_id,
+            )
+            return result == "UPDATE 1"
+
+    async def seed_discord_servers_from_env(self) -> None:
+        """Seed the discord_servers table from env vars if empty."""
+        from config import settings as s
+        async with self._pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM discord_servers")
+            if count == 0 and (s.discord_webhook_url or s.discord_admin_webhook or s.discord_discovery_webhook):
+                await conn.execute(
+                    """INSERT INTO discord_servers
+                       (name, description, public_webhook, admin_webhook,
+                        discovery_webhook, bot_token, channel_id,
+                        is_active, is_default)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,true,true)""",
+                    "Default",
+                    "Migrated from environment variables",
+                    s.discord_webhook_url or None,
+                    s.discord_admin_webhook or None,
+                    s.discord_discovery_webhook or None,
+                    s.discord_bot_token or None,
+                    s.discord_channel_id or None,
+                )
+                logger.info("Seeded Discord server from env vars")
 
     # ----- System heartbeat -----
 

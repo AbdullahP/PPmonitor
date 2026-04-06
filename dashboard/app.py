@@ -160,9 +160,9 @@ async def health(state: StateManager = Depends(get_state)):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/test-webhook")
-async def api_test_webhook():
+async def api_test_webhook(state: StateManager = Depends(get_state)):
     from monitor.alerts import test_all_webhooks
-    return await test_all_webhooks()
+    return await test_all_webhooks(state=state)
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +213,10 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
     rate_limiters = list(shop_health.values()) if shop_health else all_limiter_statuses()
 
     try:
-        discord_status = await state.get_discord_status()
+        discord_servers = await state.list_discord_servers(active_only=False)
     except Exception:
-        logger.exception("Failed to get discord status")
-        discord_status = {}
+        logger.exception("Failed to list discord servers")
+        discord_servers = []
 
     return templates.TemplateResponse(request, "index.html", {
         "active_page": "overview",
@@ -226,7 +226,7 @@ async def index(request: Request, state: StateManager = Depends(get_state)):
         "discovered": discovered,
         "rate_limiters": rate_limiters,
         "upcoming_sets": get_upcoming_sets(),
-        "discord_status": discord_status,
+        "discord_servers": discord_servers,
     })
 
 
@@ -414,6 +414,100 @@ async def delete_keyword(keyword_id: int, state: StateManager = Depends(get_stat
 async def toggle_keyword(keyword_id: int, state: StateManager = Depends(get_state)):
     await state.toggle_keyword(keyword_id)
     return RedirectResponse("/keywords", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Discord server management
+# ---------------------------------------------------------------------------
+
+@app.get("/discord", response_class=HTMLResponse)
+async def discord_page(request: Request, state: StateManager = Depends(get_state)):
+    try:
+        servers = await state.list_discord_servers(active_only=False)
+    except Exception:
+        logger.exception("Failed to list discord servers")
+        servers = []
+
+    return templates.TemplateResponse(request, "discord.html", {
+        "active_page": "discord",
+        "servers": servers,
+    })
+
+
+@app.post("/discord/add")
+async def add_discord_server(
+    name: str = Form(...),
+    description: str = Form(default=""),
+    public_webhook: str = Form(default=""),
+    admin_webhook: str = Form(default=""),
+    discovery_webhook: str = Form(default=""),
+    bot_token: str = Form(default=""),
+    channel_id: str = Form(default=""),
+    send_stock_alerts: bool = Form(default=False),
+    send_discovery_alerts: bool = Form(default=False),
+    send_admin_alerts: bool = Form(default=False),
+    send_queue_alerts: bool = Form(default=False),
+    state: StateManager = Depends(get_state),
+):
+    await state.add_discord_server(
+        name=name,
+        description=description or None,
+        public_webhook=public_webhook or None,
+        admin_webhook=admin_webhook or None,
+        discovery_webhook=discovery_webhook or None,
+        bot_token=bot_token or None,
+        channel_id=channel_id or None,
+        send_stock_alerts=send_stock_alerts,
+        send_discovery_alerts=send_discovery_alerts,
+        send_admin_alerts=send_admin_alerts,
+        send_queue_alerts=send_queue_alerts,
+    )
+    return RedirectResponse("/discord", status_code=303)
+
+
+@app.post("/discord/{server_id}/delete")
+async def delete_discord_server(server_id: int, state: StateManager = Depends(get_state)):
+    await state.delete_discord_server(server_id)
+    return RedirectResponse("/discord", status_code=303)
+
+
+@app.post("/discord/{server_id}/toggle")
+async def toggle_discord_server(server_id: int, state: StateManager = Depends(get_state)):
+    await state.toggle_discord_server(server_id)
+    return RedirectResponse("/discord", status_code=303)
+
+
+@app.post("/discord/{server_id}/test")
+async def test_discord_server(server_id: int, state: StateManager = Depends(get_state)):
+    server = await state.get_discord_server(server_id)
+    if not server:
+        raise HTTPException(404, "Server not found")
+
+    from monitor.alerts import test_server_webhooks
+    from datetime import datetime, timezone
+
+    results = await test_server_webhooks(server, state=state)
+
+    any_ok = any(r["ok"] for r in results.values() if r.get("configured"))
+    any_failed = any(not r["ok"] for r in results.values() if r.get("configured"))
+    test_result = "ok" if any_ok and not any_failed else "failed" if any_failed else "untested"
+    test_error = None
+    if any_failed:
+        failed = [
+            f"{k}: {r.get('error', '')[:100]}"
+            for k, r in results.items()
+            if r.get("configured") and not r["ok"]
+        ]
+        test_error = "; ".join(failed)
+
+    await state.update_discord_server(
+        server_id,
+        last_tested_at=datetime.now(timezone.utc),
+        last_test_result=test_result,
+        last_test_error=test_error,
+    )
+
+    return results
 
 
 # ---------------------------------------------------------------------------

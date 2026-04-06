@@ -1,4 +1,4 @@
-"""Discord webhook alert sender with delivery tracking."""
+"""Discord webhook alert sender with delivery tracking and multi-server support."""
 
 import asyncio
 import json as _json
@@ -27,24 +27,69 @@ SHOP_EMOJI: dict[str, str] = {
     "pokemoncenter": "\U0001f534",
 }
 
-# Map webhook URLs to their type name for logging
-_WEBHOOK_TYPES = {}
+
+async def _get_webhook_urls(
+    state: StateManager | None, webhook_type: str
+) -> list[str]:
+    """Get webhook URLs from DB servers, falling back to env vars.
+
+    webhook_type: 'public', 'admin', 'discovery'
+    Returns a list of URLs (one per active server that has this webhook).
+    """
+    if state:
+        try:
+            servers = await state.list_discord_servers(active_only=True)
+            if servers:
+                field_map = {
+                    "public": "public_webhook",
+                    "admin": "admin_webhook",
+                    "discovery": "discovery_webhook",
+                }
+                toggle_map = {
+                    "public": "send_stock_alerts",
+                    "admin": "send_admin_alerts",
+                    "discovery": "send_discovery_alerts",
+                }
+                field = field_map.get(webhook_type, "public_webhook")
+                toggle = toggle_map.get(webhook_type, "send_stock_alerts")
+                urls = []
+                for s in servers:
+                    if s.get(toggle, True) and s.get(field):
+                        urls.append(s[field])
+                return urls
+        except Exception:
+            logger.debug("Failed to load discord servers from DB, using env fallback")
+
+    # Fallback to env vars
+    env_map = {
+        "public": settings.discord_webhook_url,
+        "admin": settings.discord_admin_webhook,
+        "discovery": settings.discord_discovery_webhook,
+    }
+    url = env_map.get(webhook_type, "")
+    return [url] if url else []
 
 
-def _webhook_type(url: str) -> str:
-    """Identify which webhook type a URL corresponds to."""
-    if url == settings.discord_webhook_url:
-        return "public"
-    if url == settings.discord_admin_webhook:
-        return "admin"
-    if url == settings.discord_discovery_webhook:
-        return "discovery"
-    return "unknown"
+async def _get_queue_urls(state: StateManager | None) -> list[str]:
+    """Get webhook URLs for queue alerts from DB servers."""
+    if state:
+        try:
+            servers = await state.list_discord_servers(active_only=True)
+            if servers:
+                return [
+                    s["public_webhook"] for s in servers
+                    if s.get("send_queue_alerts", True) and s.get("public_webhook")
+                ]
+        except Exception:
+            logger.debug("Failed to load discord servers for queue, using env fallback")
+    url = settings.discord_webhook_url
+    return [url] if url else []
 
 
 async def _post_webhook(
     webhook_url: str,
     payload: dict,
+    webhook_type: str = "unknown",
     state: StateManager | None = None,
     alert_id: int | None = None,
 ) -> dict:
@@ -52,7 +97,6 @@ async def _post_webhook(
 
     Returns dict with 'ok', 'status_code', 'error' keys.
     """
-    wh_type = _webhook_type(webhook_url)
     payload_snippet = _json.dumps(payload)[:200]
 
     if not settings.discord_enabled:
@@ -70,7 +114,6 @@ async def _post_webhook(
             body = resp.text
 
             if status == 429:
-                # Rate limited — extract retry_after and wait
                 retry_after = 5.0
                 try:
                     data = resp.json()
@@ -79,10 +122,9 @@ async def _post_webhook(
                     pass
                 logger.warning(
                     "Discord rate limited (%s), retrying in %.1fs",
-                    wh_type, retry_after,
+                    webhook_type, retry_after,
                 )
                 await asyncio.sleep(retry_after)
-                # Retry once
                 resp = await client.post(webhook_url, json=payload)
                 status = resp.status_code
                 body = resp.text
@@ -90,12 +132,11 @@ async def _post_webhook(
             if status not in (200, 204):
                 logger.error(
                     "Discord webhook failed (%s): HTTP %d — %s",
-                    wh_type, status, body[:200],
+                    webhook_type, status, body[:200],
                 )
-                # Log to webhook_log table
                 if state:
                     await state.log_webhook(
-                        wh_type, status, success=False,
+                        webhook_type, status, success=False,
                         error_message=body[:500],
                         payload_snippet=payload_snippet,
                     )
@@ -106,26 +147,25 @@ async def _post_webhook(
                         )
                 return {"ok": False, "status_code": status, "error": body[:500]}
 
-            logger.info("Discord webhook delivered (%s): HTTP %d", wh_type, status)
+            logger.info("Discord webhook delivered (%s): HTTP %d", webhook_type, status)
             if state:
                 await state.log_webhook(
-                    wh_type, status, success=True,
+                    webhook_type, status, success=True,
                     payload_snippet=payload_snippet,
                 )
                 if alert_id:
                     await state.update_alert_delivery(
                         alert_id, sent=True, status_code=status,
                     )
-            # Delay between webhook calls to avoid rate limits
             await asyncio.sleep(WEBHOOK_DELAY)
             return {"ok": True, "status_code": status, "error": None}
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}"
-        logger.error("Discord webhook exception (%s): %s", wh_type, error_msg)
+        logger.error("Discord webhook exception (%s): %s", webhook_type, error_msg)
         if state:
             await state.log_webhook(
-                wh_type, 0, success=False,
+                webhook_type, 0, success=False,
                 error_message=error_msg[:500],
                 payload_snippet=payload_snippet,
             )
@@ -134,6 +174,21 @@ async def _post_webhook(
                     alert_id, sent=False, status_code=0, error=error_msg[:500],
                 )
         return {"ok": False, "status_code": 0, "error": error_msg}
+
+
+async def _send_to_all(
+    webhook_type: str,
+    payload: dict,
+    state: StateManager | None = None,
+    alert_id: int | None = None,
+) -> None:
+    """Send payload to all active servers' webhooks of the given type."""
+    urls = await _get_webhook_urls(state, webhook_type)
+    for url in urls:
+        await _post_webhook(
+            url, payload,
+            webhook_type=webhook_type, state=state, alert_id=alert_id,
+        )
 
 
 async def send_stock_alert(
@@ -166,7 +221,7 @@ async def send_stock_alert(
         msg = f"Stock alert: {product.name} - InStock - {redirect_url}"
         alert_id = await state.log_alert(product.product_id, "stock_change", msg)
 
-    await _post_webhook(settings.discord_webhook_url, payload, state=state, alert_id=alert_id)
+    await _send_to_all("public", payload, state=state, alert_id=alert_id)
     logger.info("Stock alert sent for %s [%s]", product.product_id, shop)
 
 
@@ -191,7 +246,7 @@ async def send_out_of_stock_alert(
         msg = f"OOS alert: {product.name} - OutOfStock"
         alert_id = await state.log_alert(product.product_id, "stock_change", msg)
 
-    await _post_webhook(settings.discord_webhook_url, payload, state=state, alert_id=alert_id)
+    await _send_to_all("public", payload, state=state, alert_id=alert_id)
     logger.info("Out-of-stock alert sent for %s [%s]", product.product_id, shop)
 
 
@@ -224,7 +279,7 @@ async def send_error_alert(
         msg = f"Error alert: {product_id} - {consecutive_failures} failures - {error_msg[:200]}"
         alert_id = await state.log_alert(product_id, "error", msg)
 
-    await _post_webhook(settings.discord_admin_webhook, payload, state=state, alert_id=alert_id)
+    await _send_to_all("admin", payload, state=state, alert_id=alert_id)
     logger.warning("Error alert sent for %s (%d failures)", product_id, consecutive_failures)
 
 
@@ -252,7 +307,11 @@ async def send_queue_alert(
     if state:
         alert_id = await state.log_alert(None, "queue", f"PC queue active: {pc_url}")
 
-    await _post_webhook(settings.discord_webhook_url, payload, state=state, alert_id=alert_id)
+    urls = await _get_queue_urls(state)
+    for url in urls:
+        await _post_webhook(
+            url, payload, webhook_type="public", state=state, alert_id=alert_id,
+        )
     logger.info("Queue alert sent for Pokemon Center: %s", pc_url)
 
 
@@ -274,35 +333,101 @@ async def send_discovery_alert(
         msg = f"Discovery: {product_id} - {url}"
         alert_id = await state.log_alert(product_id, "discovery", msg)
 
-    await _post_webhook(settings.discord_discovery_webhook, payload, state=state, alert_id=alert_id)
+    await _send_to_all("discovery", payload, state=state, alert_id=alert_id)
     logger.info("Discovery alert sent for %s", product_id)
 
 
-async def test_all_webhooks() -> dict:
-    """Send a test message to all configured webhooks. Returns status per webhook."""
+async def test_server_webhooks(
+    server: dict, state: StateManager | None = None,
+) -> dict:
+    """Send a test message to all configured webhooks for a server."""
     test_payload = {
         "embeds": [{
-            "title": "Webhook Test",
-            "description": "This is a test message from Pokemon Monitor.",
+            "title": f"Webhook Test — {server.get('name', 'Unknown')}",
+            "description": "This is a test message from Pok\u00e9mon Monitor.",
             "color": 0x7289DA,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }],
     }
 
     results = {}
-    for name, url in [
-        ("public_webhook", settings.discord_webhook_url),
-        ("admin_webhook", settings.discord_admin_webhook),
-        ("discovery_webhook", settings.discord_discovery_webhook),
+    for wh_type, field in [
+        ("public", "public_webhook"),
+        ("admin", "admin_webhook"),
+        ("discovery", "discovery_webhook"),
     ]:
+        url = server.get(field)
         if not url:
-            results[name] = {"status": 0, "ok": False, "error": "Not configured"}
+            results[wh_type] = {"configured": False, "status": 0, "ok": False, "error": "Not configured"}
             continue
-        result = await _post_webhook(url, test_payload)
-        results[name] = {
+        result = await _post_webhook(url, test_payload, webhook_type=wh_type, state=state)
+        results[wh_type] = {
+            "configured": True,
             "status": result["status_code"],
             "ok": result["ok"],
             "error": result.get("error"),
         }
 
+    return results
+
+
+async def test_all_webhooks(state: StateManager | None = None) -> dict:
+    """Test all active servers' webhooks (or env var fallback)."""
+    if state:
+        try:
+            servers = await state.list_discord_servers(active_only=True)
+            if servers:
+                all_results = {}
+                for server in servers:
+                    results = await test_server_webhooks(server, state=state)
+                    # Update test status in DB
+                    any_ok = any(r["ok"] for r in results.values() if r.get("configured"))
+                    any_failed = any(
+                        not r["ok"] for r in results.values() if r.get("configured")
+                    )
+                    test_result = "ok" if any_ok and not any_failed else "failed" if any_failed else "untested"
+                    test_error = None
+                    if any_failed:
+                        failed = [
+                            f"{k}: {r.get('error', '')[:100]}"
+                            for k, r in results.items()
+                            if r.get("configured") and not r["ok"]
+                        ]
+                        test_error = "; ".join(failed)
+                    await state.update_discord_server(
+                        server["id"],
+                        last_tested_at=datetime.now(timezone.utc),
+                        last_test_result=test_result,
+                        last_test_error=test_error,
+                    )
+                    all_results[server["name"]] = results
+                return all_results
+        except Exception:
+            logger.exception("Failed to test DB servers, falling back to env")
+
+    # Fallback: test env var webhooks
+    test_payload = {
+        "embeds": [{
+            "title": "Webhook Test",
+            "description": "This is a test message from Pok\u00e9mon Monitor.",
+            "color": 0x7289DA,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }],
+    }
+    results = {}
+    for name, url in [
+        ("public", settings.discord_webhook_url),
+        ("admin", settings.discord_admin_webhook),
+        ("discovery", settings.discord_discovery_webhook),
+    ]:
+        if not url:
+            results[name] = {"configured": False, "status": 0, "ok": False, "error": "Not configured"}
+            continue
+        result = await _post_webhook(url, test_payload, webhook_type=name)
+        results[name] = {
+            "configured": True,
+            "status": result["status_code"],
+            "ok": result["ok"],
+            "error": result.get("error"),
+        }
     return results

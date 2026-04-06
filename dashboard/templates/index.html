@@ -80,35 +80,41 @@
   <div class="card-body">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
       <div class="section-title" style="margin-bottom:0">Discord Status</div>
-      <button onclick="testWebhooks(this)" class="btn-monitor">Test Webhooks</button>
+      <div style="display:flex; gap:8px">
+        <button onclick="testWebhooks(this)" class="btn-monitor">Test All</button>
+        <a href="/discord" class="btn-monitor" style="text-decoration:none">Manage</a>
+      </div>
     </div>
-    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px">
-      {% for wh_name, wh_label in [('public', 'Public'), ('admin', 'Admin'), ('discovery', 'Discovery')] %}
-      <div class="rl-card{% if discord_status.get(wh_name, {}).get('success') %}" style="border-left-color:var(--primary){% else %}" style="border-left-color:var(--error){% endif %}">
+    {% if discord_servers %}
+    <div style="display:flex; flex-direction:column; gap:8px">
+      {% for s in discord_servers %}
+      <div class="rl-card{% if s.last_test_result == 'failed' %} rl-card--paused{% elif s.last_test_result == 'ok' %}{% else %} rl-card--throttled{% endif %}"{% if not s.is_active %} style="opacity:0.5"{% endif %}>
         <div>
-          <div class="rl-shop">{{ wh_label }}</div>
-          {% if discord_status.get(wh_name) %}
-            {% if discord_status[wh_name].success %}
-              <div class="rl-detail" style="color:var(--primary)">Delivered {{ discord_status[wh_name].timestamp.strftime('%H:%M') if discord_status[wh_name].timestamp else '' }}</div>
-            {% else %}
-              <div class="rl-detail" style="color:var(--error)">Failed: HTTP {{ discord_status[wh_name].status_code }}</div>
-            {% endif %}
-          {% else %}
-            <div class="rl-detail">No data yet</div>
-          {% endif %}
+          <div class="rl-shop">{{ s.name }}</div>
+          <div class="rl-detail">
+            {% if s.public_webhook %}&#10003; Public{% endif %}
+            {% if s.admin_webhook %} &#10003; Admin{% endif %}
+            {% if s.discovery_webhook %} &#10003; Discovery{% endif %}
+          </div>
         </div>
         <div style="text-align:right">
-          {% if discord_status.get(wh_name, {}).get('success') %}
-            <span style="color:var(--primary); font-size:1.2rem">&#10003;</span>
-          {% elif discord_status.get(wh_name) %}
-            <span style="color:var(--error); font-size:1.2rem">&#10007;</span>
+          {% if s.last_test_result == 'ok' %}
+            <span style="color:var(--primary); font-size:1rem">&#10003;</span>
+            <div class="rl-detail">{{ s.last_tested_at.strftime('%H:%M') if s.last_tested_at else '' }}</div>
+          {% elif s.last_test_result == 'failed' %}
+            <span style="color:var(--error); font-size:1rem">&#10007;</span>
+            <div class="rl-detail" style="color:var(--error)">Failed</div>
           {% else %}
-            <span style="color:var(--outline); font-size:1.2rem">?</span>
+            <span style="color:var(--outline); font-size:1rem">?</span>
+            <div class="rl-detail">Untested</div>
           {% endif %}
         </div>
       </div>
       {% endfor %}
     </div>
+    {% else %}
+    <div class="text-muted text-xs" style="padding:8px 0">No Discord servers configured. <a href="/discord">Add one</a> or they will be seeded from env vars on next restart.</div>
+    {% endif %}
     <div id="webhook-test-result" style="margin-top:12px"></div>
   </div>
 </div>
@@ -120,23 +126,26 @@ async function testWebhooks(btn) {
   try {
     const resp = await fetch('/api/test-webhook', {method: 'POST'});
     const data = await resp.json();
-    let html = '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px">';
-    for (const [key, val] of Object.entries(data)) {
-      const label = key.replace('_', ' ');
-      const color = val.ok ? 'var(--primary)' : 'var(--error)';
-      const icon = val.ok ? '&#10003;' : '&#10007;';
-      const detail = val.ok ? 'HTTP ' + val.status : (val.error || 'Failed').substring(0, 40);
-      html += '<div style="padding:8px 12px; background:var(--surface-low); border-radius:6px; font-size:0.75rem">';
-      html += '<span style="color:' + color + '">' + icon + '</span> <strong>' + label + '</strong><br>';
-      html += '<span style="color:var(--outline)">' + detail + '</span></div>';
+    let html = '';
+    for (const [server, results] of Object.entries(data)) {
+      html += '<div style="margin-bottom:8px"><strong style="font-size:0.75rem">' + server + '</strong><div style="display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-top:4px">';
+      for (const [key, val] of Object.entries(results)) {
+        if (!val.configured) continue;
+        const color = val.ok ? 'var(--primary)' : 'var(--error)';
+        const icon = val.ok ? '&#10003;' : '&#10007;';
+        const detail = val.ok ? 'HTTP ' + val.status : (val.error || 'Failed').substring(0, 30);
+        html += '<div style="padding:4px 8px; background:var(--surface-low); border-radius:4px; font-size:0.7rem">';
+        html += '<span style="color:' + color + '">' + icon + '</span> ' + key + ' <span style="color:var(--outline)">' + detail + '</span></div>';
+      }
+      html += '</div></div>';
     }
-    html += '</div>';
-    el.innerHTML = html;
+    el.innerHTML = html || '<span class="text-muted" style="font-size:0.75rem">No servers to test</span>';
+    setTimeout(() => location.reload(), 3000);
   } catch (e) {
     el.innerHTML = '<div style="color:var(--error); font-size:0.75rem">Test failed: ' + e.message + '</div>';
   }
   btn.disabled = false;
-  btn.textContent = 'Test Webhooks';
+  btn.textContent = 'Test All';
 }
 </script>
 
