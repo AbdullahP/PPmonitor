@@ -93,6 +93,48 @@ async def _raw_post(
 # Alert routing — DB servers first, env vars as fallback
 # ---------------------------------------------------------------------------
 
+_WEBHOOK_FIELD = {"public": "public_webhook", "admin": "admin_webhook", "discovery": "discovery_webhook", "queue": "queue_webhook"}
+_TOGGLE_FIELD = {"public": "send_stock_alerts", "admin": "send_admin_alerts", "discovery": "send_discovery_alerts", "queue": "send_queue_alerts"}
+_CHANNEL_FIELD = {"public": "stock_channel_id", "admin": "admin_channel_id", "discovery": "discovery_channel_id", "queue": "queue_channel_id"}
+
+
+async def _send_to_server(
+    server: dict, webhook_type: str, payload: dict,
+    state: StateManager, alert_id: int | None = None,
+) -> None:
+    """Send to a single server — webhook or bot-queue depending on mode."""
+    toggle = _TOGGLE_FIELD.get(webhook_type, "send_stock_alerts")
+    if not server.get(toggle, True):
+        return
+
+    mode = server.get("mode", "webhook")
+
+    if mode == "bot":
+        # Bot-direct: enqueue for the bot process to pick up
+        channel_field = _CHANNEL_FIELD.get(webhook_type)
+        channel_id = server.get(channel_field) if channel_field else None
+        if not channel_id:
+            return
+        # Extract embed and content from payload
+        embeds = payload.get("embeds", [])
+        embed_json = embeds[0] if embeds else {}
+        content = payload.get("content")
+        await state.enqueue_discord_message(
+            server["id"], channel_id, embed_json, content=content,
+        )
+        logger.info("Enqueued bot message for server %s channel %s (%s)", server["name"], channel_id, webhook_type)
+    else:
+        # Webhook mode: POST directly
+        wh_field = _WEBHOOK_FIELD.get(webhook_type, "public_webhook")
+        # For queue type, prefer queue_webhook, fall back to public_webhook
+        if webhook_type == "queue":
+            url = server.get("queue_webhook") or server.get("public_webhook")
+        else:
+            url = server.get(wh_field)
+        if url:
+            await _raw_post(url, payload, webhook_type=webhook_type, state=state, alert_id=alert_id)
+
+
 async def _send_to_all(
     webhook_type: str,
     payload: dict,
@@ -104,19 +146,13 @@ async def _send_to_all(
     DB servers are INDEPENDENT of DISCORD_ENABLED — they always send.
     Env var fallback is gated by DISCORD_ENABLED.
     """
-    # Try DB servers first (always, regardless of DISCORD_ENABLED)
     if state:
         try:
             servers = await state.list_discord_servers(active_only=True)
             if servers:
-                field_map = {"public": "public_webhook", "admin": "admin_webhook", "discovery": "discovery_webhook"}
-                toggle_map = {"public": "send_stock_alerts", "admin": "send_admin_alerts", "discovery": "send_discovery_alerts"}
-                field = field_map.get(webhook_type, "public_webhook")
-                toggle = toggle_map.get(webhook_type, "send_stock_alerts")
                 for s in servers:
-                    if s.get(toggle, True) and s.get(field):
-                        await _raw_post(s[field], payload, webhook_type=webhook_type, state=state, alert_id=alert_id)
-                return  # DB servers handled it — don't fall back
+                    await _send_to_server(s, webhook_type, payload, state=state, alert_id=alert_id)
+                return
         except Exception:
             logger.debug("Failed to load discord servers, falling back to env")
 
@@ -125,37 +161,15 @@ async def _send_to_all(
         logger.info("Discord disabled and no DB servers configured, skipping")
         return
 
-    env_map = {"public": settings.discord_webhook_url, "admin": settings.discord_admin_webhook, "discovery": settings.discord_discovery_webhook}
+    env_map = {
+        "public": settings.discord_webhook_url,
+        "admin": settings.discord_admin_webhook,
+        "discovery": settings.discord_discovery_webhook,
+        "queue": settings.discord_queue_webhook or settings.discord_webhook_url,
+    }
     url = env_map.get(webhook_type, "")
     if url:
         await _raw_post(url, payload, webhook_type=webhook_type, state=state, alert_id=alert_id)
-
-
-async def _send_queue(
-    payload: dict,
-    state: StateManager | None = None,
-    alert_id: int | None = None,
-) -> None:
-    """Send queue alerts — prefers queue_webhook, falls back to public."""
-    if state:
-        try:
-            servers = await state.list_discord_servers(active_only=True)
-            if servers:
-                for s in servers:
-                    if not s.get("send_queue_alerts", True):
-                        continue
-                    url = s.get("queue_webhook") or s.get("public_webhook")
-                    if url:
-                        await _raw_post(url, payload, webhook_type="queue", state=state, alert_id=alert_id)
-                return
-        except Exception:
-            logger.debug("Failed to load discord servers for queue, using env fallback")
-
-    if not settings.discord_enabled:
-        return
-    url = settings.discord_queue_webhook or settings.discord_webhook_url
-    if url:
-        await _raw_post(url, payload, webhook_type="queue", state=state, alert_id=alert_id)
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +259,7 @@ async def send_queue_alert(pc_url: str, state: StateManager | None = None) -> No
     alert_id = None
     if state:
         alert_id = await state.log_alert(None, "queue", f"PC queue active: {pc_url}")
-    await _send_queue(payload, state=state, alert_id=alert_id)
+    await _send_to_all("queue", payload, state=state, alert_id=alert_id)
     logger.info("Queue alert sent for Pokemon Center: %s", pc_url)
 
 

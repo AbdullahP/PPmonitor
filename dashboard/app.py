@@ -698,8 +698,13 @@ async def add_discord_server(
     admin_webhook: str = Form(default=""),
     discovery_webhook: str = Form(default=""),
     queue_webhook: str = Form(default=""),
-    bot_token: str = Form(default=""),
-    channel_id: str = Form(default=""),
+    mode: str = Form(default="webhook"),
+    guild_id: str = Form(default=""),
+    guild_name: str = Form(default=""),
+    stock_channel_id: str = Form(default=""),
+    admin_channel_id: str = Form(default=""),
+    discovery_channel_id: str = Form(default=""),
+    queue_channel_id: str = Form(default=""),
     send_stock_alerts: bool = Form(default=False),
     send_discovery_alerts: bool = Form(default=False),
     send_admin_alerts: bool = Form(default=False),
@@ -710,13 +715,29 @@ async def add_discord_server(
         name=name, description=description or None,
         public_webhook=public_webhook or None, admin_webhook=admin_webhook or None,
         discovery_webhook=discovery_webhook or None,
-        bot_token=bot_token or None, channel_id=channel_id or None,
         send_stock_alerts=send_stock_alerts, send_discovery_alerts=send_discovery_alerts,
         send_admin_alerts=send_admin_alerts, send_queue_alerts=send_queue_alerts,
     )
-    # Update queue_webhook separately (not in add_discord_server params)
+    # Set extra fields that aren't in add_discord_server params
+    updates = {}
     if queue_webhook:
-        await state.update_discord_server(server["id"], queue_webhook=queue_webhook)
+        updates["queue_webhook"] = queue_webhook
+    if mode == "bot":
+        updates["mode"] = "bot"
+    if guild_id:
+        updates["guild_id"] = guild_id
+    if guild_name:
+        updates["guild_name"] = guild_name
+    if stock_channel_id:
+        updates["stock_channel_id"] = stock_channel_id
+    if admin_channel_id:
+        updates["admin_channel_id"] = admin_channel_id
+    if discovery_channel_id:
+        updates["discovery_channel_id"] = discovery_channel_id
+    if queue_channel_id:
+        updates["queue_channel_id"] = queue_channel_id
+    if updates:
+        await state.update_discord_server(server["id"], **updates)
     return RedirectResponse("/discord", status_code=303)
 
 

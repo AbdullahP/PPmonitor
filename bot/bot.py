@@ -37,6 +37,8 @@ async def on_ready():
     except Exception:
         logger.exception("Failed to sync commands")
     logger.info("Bot ready as %s", bot.user)
+    # Start the message queue consumer
+    bot.loop.create_task(process_discord_queue())
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +140,43 @@ async def monitor_test(interaction: discord.Interaction, url: str):
 
 
 bot.tree.add_command(monitor_group)
+
+
+async def process_discord_queue():
+    """Background task: read pending messages from DB queue and post to channels."""
+    await bot.wait_until_ready()
+    logger.info("Discord queue consumer started")
+    while not bot.is_closed():
+        try:
+            if state is None:
+                await asyncio.sleep(5)
+                continue
+            messages = await state.get_pending_messages(limit=20)
+            for msg in messages:
+                try:
+                    channel = bot.get_channel(int(msg["channel_id"]))
+                    if channel is None:
+                        channel = await bot.fetch_channel(int(msg["channel_id"]))
+
+                    embed_data = msg["embed_json"]
+                    if isinstance(embed_data, str):
+                        import json
+                        embed_data = json.loads(embed_data)
+
+                    embed = discord.Embed.from_dict(embed_data)
+                    content = msg.get("content")
+                    await channel.send(content=content, embed=embed)
+                    await state.mark_message_sent(msg["id"])
+                    logger.info("Bot posted to channel %s (queue id %d)", msg["channel_id"], msg["id"])
+
+                except Exception as exc:
+                    error_msg = f"{type(exc).__name__}: {exc}"
+                    logger.error("Failed to post queue message %d: %s", msg["id"], error_msg)
+                    await state.mark_message_failed(msg["id"], error_msg[:500])
+        except Exception:
+            logger.exception("Queue consumer cycle failed")
+
+        await asyncio.sleep(2)
 
 
 async def main():

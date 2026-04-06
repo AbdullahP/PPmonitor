@@ -254,6 +254,44 @@ class StateManager:
             )
             return [dict(r) for r in rows]
 
+    # ----- Discord message queue -----
+
+    async def enqueue_discord_message(
+        self, server_id: int, channel_id: str,
+        embed_json: dict, content: str | None = None,
+    ) -> int:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO discord_queue (server_id, channel_id, content, embed_json)
+                   VALUES ($1, $2, $3, $4::jsonb) RETURNING id""",
+                server_id, channel_id, content, json.dumps(embed_json),
+            )
+            return row["id"]
+
+    async def get_pending_messages(self, limit: int = 50) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT * FROM discord_queue
+                   WHERE sent = FALSE
+                   ORDER BY created_at LIMIT $1""",
+                limit,
+            )
+            return [dict(r) for r in rows]
+
+    async def mark_message_sent(self, message_id: int) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE discord_queue SET sent = TRUE, sent_at = NOW() WHERE id = $1",
+                message_id,
+            )
+
+    async def mark_message_failed(self, message_id: int, error: str) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE discord_queue SET error = $1 WHERE id = $2",
+                error[:500], message_id,
+            )
+
     # ----- Discovered products -----
 
     async def add_discovered(
