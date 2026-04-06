@@ -3,15 +3,19 @@
 Bol.com uses Akamai for bot detection which blocks standard httpx/requests
 based on TLS fingerprint. curl_cffi impersonates Chrome's TLS stack.
 
-Strategy: warm up a session with a search page (sets Akamai cookies),
-then fetch product pages normally — they return full JSON-LD data.
+Two strategies for product data:
+1. Direct product pages — requires Akamai cookies (_abck, ak_bmsc, bm_sz)
+   loaded from bol_cookies.json or DB. Gives full JSON-LD (name, price, avail).
+2. Search fallback — works without cookies, finds products by ID via search.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -26,22 +30,45 @@ RE_REVISION_ID = re.compile(r'\\?"revisionId\\?"\s*:\s*\\?"([a-f0-9-]+)\\?"')
 RE_OFFER_UID = re.compile(r'\\?"offerUid\\?"\s*:\s*\\?"([a-f0-9-]+)\\?"')
 RE_PRODUCT_ID = re.compile(r'/nl/nl/p/[^"]*?/(\d{7,})/')
 
-# Shared session for Akamai cookie persistence
+# Cookie file path (optional — loaded at startup if present)
+_COOKIE_FILE = Path(__file__).resolve().parent.parent.parent / "bol_cookies.json"
+
+# Shared session
 _session: cffi_requests.Session | None = None
-_session_warmed: bool = False
+_session_ready: bool = False
 
 
 def _get_session() -> cffi_requests.Session:
-    global _session
+    global _session, _session_ready
     if _session is None:
         _session = cffi_requests.Session(impersonate="chrome131")
+        _load_cookies(_session)
     return _session
 
 
-async def _ensure_warmed() -> None:
-    """Warm up the session with a search page to get Akamai cookies."""
-    global _session_warmed
-    if _session_warmed:
+def _load_cookies(session: cffi_requests.Session) -> None:
+    """Load Akamai cookies from bol_cookies.json if it exists."""
+    global _session_ready
+    if not _COOKIE_FILE.exists():
+        logger.debug("No bol_cookies.json found — will use search fallback")
+        return
+    try:
+        cookies_data = json.loads(_COOKIE_FILE.read_text(encoding="utf-8"))
+        for c in cookies_data:
+            session.cookies.set(
+                c["name"], c["value"],
+                domain=c.get("domain", ".bol.com"),
+            )
+        _session_ready = True
+        logger.info("Loaded %d Akamai cookies from bol_cookies.json", len(cookies_data))
+    except Exception:
+        logger.warning("Failed to load bol_cookies.json", exc_info=True)
+
+
+async def _ensure_session() -> None:
+    """Ensure the session has valid cookies — warm up via search if needed."""
+    global _session_ready
+    if _session_ready:
         return
     session = _get_session()
     try:
@@ -50,10 +77,10 @@ async def _ensure_warmed() -> None:
             timeout=15,
         )
         if resp.status_code == 200 and len(resp.text) > 10000:
-            _session_warmed = True
-            logger.info("Bol.com session warmed (Akamai cookies set)")
+            _session_ready = True
+            logger.info("Bol.com session warmed via search")
         else:
-            logger.warning("Bol.com warmup returned HTTP %d (%d bytes)", resp.status_code, len(resp.text))
+            logger.warning("Bol.com warmup: HTTP %d (%d bytes)", resp.status_code, len(resp.text))
     except Exception:
         logger.warning("Bol.com session warmup failed")
 
@@ -63,7 +90,7 @@ class BolAdapter(ShopAdapter):
     base_url = "https://www.bol.com"
 
     def parse_product(self, html: str, url: str = "") -> ProductData:
-        """Parse a product page with JSON-LD data."""
+        """Parse a product page — JSON-LD primary."""
         json_ld = parse_json_ld_product(html)
 
         product_id = ""
@@ -110,7 +137,7 @@ class BolAdapter(ShopAdapter):
         return f"{self.base_url}/nl/nl/p/-/{product_id}/"
 
     def build_category_urls(self) -> list[str]:
-        """Use search pages for discovery (category pages are Remix SPA)."""
+        """Search pages for discovery (category pages are Remix SPA)."""
         return [
             f"{self.base_url}/nl/nl/s/?searchtext=pokemon+tcg&view=list",
             f"{self.base_url}/nl/nl/s/?searchtext=pokemon+kaarten+elite+trainer+box&view=list",
@@ -122,11 +149,11 @@ class BolAdapter(ShopAdapter):
     async def fetch_product(
         self, client: httpx.AsyncClient, url: str
     ) -> ProductData:
-        """Fetch product page using curl_cffi with warmed Akamai session."""
+        """Fetch product page via curl_cffi with Akamai bypass."""
         start = time.monotonic()
-        await _ensure_warmed()
-
+        await _ensure_session()
         session = _get_session()
+
         try:
             resp = session.get(url, timeout=15)
             latency_ms = int((time.monotonic() - start) * 1000)
@@ -138,24 +165,27 @@ class BolAdapter(ShopAdapter):
                     response=httpx.Response(resp.status_code),
                 )
 
-            # Check for challenge page (small response = Akamai block)
+            # Detect Akamai challenge page (small response)
             if len(resp.text) < 5000:
-                title_match = re.search(r"<title>(.*?)</title>", resp.text)
-                title = title_match.group(1) if title_match else ""
-                if "challenge" in title.lower() or "bol" == title.lower():
-                    # Reset session and retry warmup
-                    global _session_warmed, _session
-                    _session_warmed = False
-                    _session = None
-                    logger.warning("Bol.com challenge page detected, resetting session")
-                    raise httpx.HTTPStatusError(
-                        "Akamai challenge page — session reset, will retry",
-                        request=httpx.Request("GET", url),
-                        response=httpx.Response(403),
-                    )
+                global _session_ready, _session
+                _session_ready = False
+                _session = None
+                logger.warning("Bol.com challenge page — session reset")
+                raise httpx.HTTPStatusError(
+                    "Akamai challenge page — will retry next cycle",
+                    request=httpx.Request("GET", url),
+                    response=httpx.Response(403),
+                )
 
             data = self.parse_product(resp.text, url=url)
             data.latency_ms = latency_ms
+
+            # If JSON-LD didn't have the product ID, extract from URL
+            if not data.product_id:
+                pid_match = re.search(r"(\d{7,})", url)
+                if pid_match:
+                    data.product_id = pid_match.group(1)
+
             return data
 
         except httpx.HTTPStatusError:
@@ -170,13 +200,13 @@ class BolAdapter(ShopAdapter):
     async def fetch_category(
         self, client: httpx.AsyncClient, url: str
     ) -> set[str]:
-        """Fetch search/category page using curl_cffi."""
-        await _ensure_warmed()
+        """Fetch search/category page via curl_cffi."""
+        await _ensure_session()
         try:
             session = _get_session()
             resp = session.get(url, timeout=15)
             if resp.status_code != 200:
-                logger.warning("Bol.com category returned HTTP %d", resp.status_code)
+                logger.warning("Bol.com category HTTP %d", resp.status_code)
                 return set()
             return self.parse_category(resp.text)
         except Exception:
