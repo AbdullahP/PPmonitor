@@ -36,6 +36,7 @@ async def main() -> None:
     await test_webhook("Public", os.getenv("DISCORD_WEBHOOK_URL"))
     await test_webhook("Admin", os.getenv("DISCORD_ADMIN_WEBHOOK"))
     await test_webhook("Discovery", os.getenv("DISCORD_DISCOVERY_WEBHOOK"))
+    await test_webhook("Queue", os.getenv("DISCORD_QUEUE_WEBHOOK"))
     print("Done. Check your Discord channels.")
 
 

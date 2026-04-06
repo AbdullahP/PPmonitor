@@ -588,12 +588,13 @@ class StateManager:
         async with self._pool.acquire() as conn:
             count = await conn.fetchval("SELECT COUNT(*) FROM discord_servers")
             if count == 0 and (s.discord_webhook_url or s.discord_admin_webhook or s.discord_discovery_webhook):
-                await conn.execute(
+                row = await conn.fetchrow(
                     """INSERT INTO discord_servers
                        (name, description, public_webhook, admin_webhook,
                         discovery_webhook, bot_token, channel_id,
                         is_active, is_default)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,true,true)""",
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,true,true)
+                       RETURNING id""",
                     "Default",
                     "Migrated from environment variables",
                     s.discord_webhook_url or None,
@@ -602,6 +603,12 @@ class StateManager:
                     s.discord_bot_token or None,
                     s.discord_channel_id or None,
                 )
+                # Set queue webhook if configured
+                if row and getattr(s, "discord_queue_webhook", ""):
+                    await conn.execute(
+                        "UPDATE discord_servers SET queue_webhook = $1 WHERE id = $2",
+                        s.discord_queue_webhook, row["id"],
+                    )
                 logger.info("Seeded Discord server from env vars")
 
     # ----- System heartbeat -----

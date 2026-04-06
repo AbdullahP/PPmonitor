@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     discord_webhook_url: str = ""        # #stock-alerts (public)
     discord_admin_webhook: str = ""      # #admin (error alerts)
     discord_discovery_webhook: str = ""  # #new-products
+    discord_queue_webhook: str = ""     # #queue-alerts
     discord_channel_id: str = ""
 
     # Redirect service

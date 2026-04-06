@@ -153,7 +153,7 @@ async def _send_queue(
 
     if not settings.discord_enabled:
         return
-    url = settings.discord_webhook_url
+    url = settings.discord_queue_webhook or settings.discord_webhook_url
     if url:
         await _raw_post(url, payload, webhook_type="queue", state=state, alert_id=alert_id)
 
