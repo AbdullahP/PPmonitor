@@ -720,7 +720,7 @@ class StateManager:
                 "status": status,
                 "count": row["count"],
                 "age_hours": round(age_hours, 1),
-                "updated_at": row["newest_update"],
+                "updated_at": row["newest_update"].isoformat() if row["newest_update"] else None,
             }
 
     # ----- System heartbeat -----
