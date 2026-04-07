@@ -298,8 +298,54 @@ async def test_module(shop_id: str, state: StateManager = Depends(get_state)):
             except Exception:
                 cookie_info = {"status": "unknown"}
 
+        # Bol.com: run full diagnostic with debug info
+        if shop_id == "bol" and hasattr(adapter, "diagnose"):
+            from monitor.shops.bol import set_state_manager
+            set_state_manager(state)
+            debug = await adapter.diagnose()
+            debug["cookies"] = cookie_info
+
+            # Determine pass/fail from debug
+            has_product = bool(debug.get("product_name"))
+            has_fallback = debug.get("search_fallback") == "success"
+
+            if has_product:
+                now = datetime.now(timezone.utc)
+                update = {
+                    "last_test_at": now,
+                    "last_test_result": "pass",
+                    "last_test_error": None,
+                    "last_test_name": debug.get("product_name"),
+                    "last_test_price": debug.get("product_price"),
+                    "last_test_avail": debug.get("product_availability"),
+                    "is_certified": True,
+                    "certified_at": now,
+                }
+                await state.update_shop_module(shop_id, **update)
+                return JSONResponse({"ok": True, "debug": debug})
+            elif has_fallback:
+                now = datetime.now(timezone.utc)
+                await state.update_shop_module(
+                    shop_id,
+                    last_test_at=now,
+                    last_test_result="pass",
+                    last_test_error="Product page Akamai-blocked, search fallback used",
+                    last_test_name=debug.get("fallback_name"),
+                    last_test_price=debug.get("fallback_price"),
+                )
+                return JSONResponse({"ok": True, "fallback": True, "debug": debug})
+            else:
+                error = debug.get("product_error") or debug.get("category_error") or debug.get("warmup_error") or "No products found"
+                await state.update_shop_module(
+                    shop_id,
+                    last_test_at=datetime.now(timezone.utc),
+                    last_test_result="fail",
+                    last_test_error=str(error)[:500],
+                )
+                return JSONResponse({"ok": False, "error": str(error)[:200], "debug": debug})
+
+        # Non-bol shops: existing flow
         async with httpx.AsyncClient(timeout=15) as client:
-            # Fetch category page to find products
             urls = adapter.build_category_urls()
             product_ids: set[str] = set()
             for url in urls[:1]:
@@ -317,58 +363,30 @@ async def test_module(shop_id: str, state: StateManager = Depends(get_state)):
                     last_test_result="fail",
                     last_test_error="No products found on category page",
                 )
-                return JSONResponse({"ok": False, "error": "No products found on category page", "cookies": cookie_info})
+                return JSONResponse({"ok": False, "error": "No products found on category page"})
 
-            # Test up to 3 products to get names
-            discovered_names = []
-            test_data = None
-            for pid in list(product_ids)[:3]:
-                product_url = adapter.build_product_url(pid)
-                try:
-                    data = await adapter.fetch_product(client, product_url)
-                    if data.name:
-                        discovered_names.append(data.name)
-                    if test_data is None:
-                        test_data = data
-                except Exception:
-                    pass
-
-            if test_data is None:
-                await state.update_shop_module(
-                    shop_id,
-                    last_test_at=datetime.now(timezone.utc),
-                    last_test_result="fail",
-                    last_test_error="Category found products but could not fetch any",
-                )
-                return JSONResponse({
-                    "ok": False,
-                    "error": "Category found products but could not fetch any",
-                    "products_found": len(product_ids),
-                    "cookies": cookie_info,
-                })
+            pid = next(iter(product_ids))
+            product_url = adapter.build_product_url(pid)
+            data = await adapter.fetch_product(client, product_url)
 
             result = {
                 "ok": True,
-                "name": test_data.name or "",
-                "price": test_data.price or "",
-                "availability": test_data.availability or "",
-                "seller": test_data.seller or "",
-                "product_id": test_data.product_id or next(iter(product_ids)),
-                "products_found": len(product_ids),
-                "discovered_names": discovered_names,
-                "cookies": cookie_info,
+                "name": data.name or "",
+                "price": data.price or "",
+                "availability": data.availability or "",
+                "product_id": data.product_id or pid,
                 "error": None,
             }
 
-            is_certified = bool(test_data.name and test_data.price and test_data.availability != "Unknown")
+            is_certified = bool(data.name and data.price and data.availability != "Unknown")
             now = datetime.now(timezone.utc)
             update = {
                 "last_test_at": now,
                 "last_test_result": "pass",
                 "last_test_error": None,
-                "last_test_name": test_data.name,
-                "last_test_price": test_data.price,
-                "last_test_avail": test_data.availability,
+                "last_test_name": data.name,
+                "last_test_price": data.price,
+                "last_test_avail": data.availability,
             }
             if is_certified:
                 update["is_certified"] = True

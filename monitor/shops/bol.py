@@ -172,6 +172,79 @@ class BolAdapter(ShopAdapter):
     def parse_category(self, html: str) -> set[str]:
         return set(RE_PRODUCT_ID.findall(html))
 
+    def parse_search_result(self, html: str, product_id: str) -> ProductData | None:
+        """Extract product data from search results page for a specific product ID.
+
+        Search pages are less protected by Akamai than product pages. We try:
+        1. JSON-LD Product blocks (some search pages include them)
+        2. Regex extraction from the HTML around the product card
+        """
+        # Strategy 1: JSON-LD — search pages sometimes embed Product schema
+        from monitor.shops.base import RE_JSON_LD
+        for match in RE_JSON_LD.finditer(html):
+            try:
+                data = json.loads(match.group(1))
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("@type") != "Product":
+                        continue
+                    pid = str(item.get("productID", ""))
+                    if pid == product_id or not pid:
+                        offers = item.get("offers", {})
+                        if isinstance(offers, dict):
+                            price = offers.get("price")
+                            avail = availability_from_schema_url(
+                                offers.get("availability", "")
+                            )
+                            seller_obj = offers.get("seller", {})
+                            seller = seller_obj.get("name") if isinstance(seller_obj, dict) else None
+                        else:
+                            price, avail, seller = None, "Unknown", None
+                        return ProductData(
+                            product_id=product_id,
+                            name=item.get("name"),
+                            price=str(price) if price is not None else None,
+                            availability=avail,
+                            seller=seller,
+                        )
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Strategy 2: Find product card by ID and extract nearby text
+        # Look for a link containing the product_id and grab the text as name
+        card_pattern = re.compile(
+            rf'/nl/nl/p/([^"]*?)/{re.escape(product_id)}/[^"]*"[^>]*>([^<]+)',
+        )
+        card_match = card_pattern.search(html)
+        name = card_match.group(2).strip() if card_match else None
+
+        # Extract price near the product card (common patterns)
+        # data-price="12.99" or "priceAmount":"12.99" or class="price" >12,99<
+        price = None
+        if card_match:
+            # Search in a window around the match
+            start = max(0, card_match.start() - 500)
+            end = min(len(html), card_match.end() + 2000)
+            region = html[start:end]
+            price_match = re.search(
+                r'(?:data-price|"priceAmount"|"price")\s*[:=]\s*"?(\d+[.,]\d{2})"?',
+                region,
+            )
+            if price_match:
+                price = price_match.group(1).replace(",", ".")
+
+        if name:
+            return ProductData(
+                product_id=product_id,
+                name=name,
+                price=price,
+                availability="Unknown",  # can't reliably determine from search
+            )
+
+        return None
+
     def build_product_url(self, product_id: str) -> str:
         return f"{self.base_url}/nl/nl/p/-/{product_id}/"
 
@@ -206,10 +279,20 @@ class BolAdapter(ShopAdapter):
 
             # Detect Akamai challenge page (small response)
             if len(resp.text) < 5000:
+                logger.warning("Bol.com challenge page — trying search fallback")
+                # Extract product_id from URL for search
+                pid_match = re.search(r"(\d{7,})", url)
+                pid = pid_match.group(1) if pid_match else ""
+                if pid:
+                    fallback = await self._search_fallback(session, pid)
+                    if fallback and fallback.name:
+                        fallback.latency_ms = latency_ms
+                        logger.info("Search fallback succeeded for %s", pid)
+                        return fallback
+                # Fallback failed — reset session and raise
                 global _session_ready, _session
                 _session_ready = False
                 _session = None
-                logger.warning("Bol.com challenge page — session reset")
                 raise httpx.HTTPStatusError(
                     "Akamai challenge page — will retry next cycle",
                     request=httpx.Request("GET", url),
@@ -236,6 +319,20 @@ class BolAdapter(ShopAdapter):
                 response=httpx.Response(500),
             ) from exc
 
+    async def _search_fallback(
+        self, session: cffi_requests.Session, product_id: str
+    ) -> ProductData | None:
+        """Search bol.com for a product ID and extract data from results."""
+        search_url = f"{self.base_url}/nl/nl/s/?searchtext={product_id}&view=list"
+        try:
+            resp = session.get(search_url, timeout=15)
+            if resp.status_code != 200 or len(resp.text) < 5000:
+                return None
+            return self.parse_search_result(resp.text, product_id)
+        except Exception:
+            logger.debug("Search fallback failed for %s", product_id)
+            return None
+
     async def fetch_category(
         self, client: httpx.AsyncClient, url: str
     ) -> set[str]:
@@ -251,3 +348,70 @@ class BolAdapter(ShopAdapter):
         except Exception:
             logger.exception("Bol.com category fetch failed: %s", url)
             return set()
+
+    async def diagnose(self) -> dict:
+        """Run diagnostic fetch sequence and return raw debug info."""
+        debug: dict = {}
+        await _ensure_session()
+        session = _get_session()
+
+        debug["session_ready"] = _session_ready
+        debug["cookies_count"] = len(session.cookies)
+
+        # Warmup / search page
+        warmup_url = f"{self.base_url}/nl/nl/s/?searchtext=pokemon+tcg&view=list"
+        try:
+            resp = session.get(warmup_url, timeout=15)
+            debug["warmup_status"] = resp.status_code
+            debug["warmup_body_length"] = len(resp.text)
+            debug["warmup_akamai_blocked"] = len(resp.text) < 5000
+            product_ids = self.parse_category(resp.text)
+            debug["warmup_product_ids_found"] = len(product_ids)
+        except Exception as exc:
+            debug["warmup_error"] = f"{type(exc).__name__}: {exc}"
+            product_ids = set()
+
+        # Category page
+        cat_url = self.build_category_urls()[0]
+        try:
+            resp = session.get(cat_url, timeout=15)
+            debug["category_status"] = resp.status_code
+            debug["category_body_length"] = len(resp.text)
+            debug["category_body_snippet"] = resp.text[:500]
+            debug["category_akamai_blocked"] = len(resp.text) < 5000
+            cat_ids = self.parse_category(resp.text)
+            debug["category_product_ids_found"] = len(cat_ids)
+            product_ids.update(cat_ids)
+        except Exception as exc:
+            debug["category_error"] = f"{type(exc).__name__}: {exc}"
+
+        # Try one product page
+        if product_ids:
+            pid = next(iter(product_ids))
+            product_url = self.build_product_url(pid)
+            debug["test_product_url"] = product_url
+            try:
+                resp = session.get(product_url, timeout=15)
+                debug["product_status"] = resp.status_code
+                debug["product_body_length"] = len(resp.text)
+                debug["product_akamai_blocked"] = len(resp.text) < 5000
+                debug["product_body_snippet"] = resp.text[:500]
+                if len(resp.text) >= 5000:
+                    data = self.parse_product(resp.text, url=product_url)
+                    debug["product_name"] = data.name
+                    debug["product_price"] = data.price
+                    debug["product_availability"] = data.availability
+                    debug["product_seller"] = data.seller
+                else:
+                    # Try search fallback
+                    fallback = await self._search_fallback(session, pid)
+                    if fallback:
+                        debug["search_fallback"] = "success"
+                        debug["fallback_name"] = fallback.name
+                        debug["fallback_price"] = fallback.price
+                    else:
+                        debug["search_fallback"] = "failed"
+            except Exception as exc:
+                debug["product_error"] = f"{type(exc).__name__}: {exc}"
+
+        return debug
