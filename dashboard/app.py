@@ -289,8 +289,17 @@ async def test_module(shop_id: str, state: StateManager = Depends(get_state)):
 
     try:
         adapter = get_adapter(shop_id)
+
+        # Cookie status for shops that use cookies
+        cookie_info = None
+        if shop_id == "bol":
+            try:
+                cookie_info = await state.get_cookie_health(shop_id)
+            except Exception:
+                cookie_info = {"status": "unknown"}
+
         async with httpx.AsyncClient(timeout=15) as client:
-            # Fetch category page to find a product
+            # Fetch category page to find products
             urls = adapter.build_category_urls()
             product_ids: set[str] = set()
             for url in urls[:1]:
@@ -308,31 +317,58 @@ async def test_module(shop_id: str, state: StateManager = Depends(get_state)):
                     last_test_result="fail",
                     last_test_error="No products found on category page",
                 )
-                return JSONResponse({"ok": False, "error": "No products found on category page"})
+                return JSONResponse({"ok": False, "error": "No products found on category page", "cookies": cookie_info})
 
-            # Test first product
-            pid = next(iter(product_ids))
-            product_url = adapter.build_product_url(pid)
-            data = await adapter.fetch_product(client, product_url)
+            # Test up to 3 products to get names
+            discovered_names = []
+            test_data = None
+            for pid in list(product_ids)[:3]:
+                product_url = adapter.build_product_url(pid)
+                try:
+                    data = await adapter.fetch_product(client, product_url)
+                    if data.name:
+                        discovered_names.append(data.name)
+                    if test_data is None:
+                        test_data = data
+                except Exception:
+                    pass
+
+            if test_data is None:
+                await state.update_shop_module(
+                    shop_id,
+                    last_test_at=datetime.now(timezone.utc),
+                    last_test_result="fail",
+                    last_test_error="Category found products but could not fetch any",
+                )
+                return JSONResponse({
+                    "ok": False,
+                    "error": "Category found products but could not fetch any",
+                    "products_found": len(product_ids),
+                    "cookies": cookie_info,
+                })
 
             result = {
                 "ok": True,
-                "name": data.name or "",
-                "price": data.price or "",
-                "availability": data.availability or "",
-                "product_id": data.product_id or pid,
+                "name": test_data.name or "",
+                "price": test_data.price or "",
+                "availability": test_data.availability or "",
+                "seller": test_data.seller or "",
+                "product_id": test_data.product_id or next(iter(product_ids)),
+                "products_found": len(product_ids),
+                "discovered_names": discovered_names,
+                "cookies": cookie_info,
                 "error": None,
             }
 
-            is_certified = bool(data.name and data.price and data.availability != "Unknown")
+            is_certified = bool(test_data.name and test_data.price and test_data.availability != "Unknown")
             now = datetime.now(timezone.utc)
             update = {
                 "last_test_at": now,
                 "last_test_result": "pass",
                 "last_test_error": None,
-                "last_test_name": data.name,
-                "last_test_price": data.price,
-                "last_test_avail": data.availability,
+                "last_test_name": test_data.name,
+                "last_test_price": test_data.price,
+                "last_test_avail": test_data.availability,
             }
             if is_certified:
                 update["is_certified"] = True

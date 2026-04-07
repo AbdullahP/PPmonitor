@@ -356,10 +356,19 @@ async def poll_queue(state: StateManager, client: httpx.AsyncClient) -> None:
 
 async def run() -> None:
     """Main entry point: start all polling tasks."""
+    import os
+
     logger.info("Starting Pokemon TCG Stock Monitor")
     logger.info("Shops: %s", list(SHOP_REGISTRY.keys()))
     logger.info("Product poll interval: %ds", settings.poll_interval_product)
     logger.info("Category poll interval: %ds", settings.poll_interval_category)
+
+    # Check for bol.com cookie file (important for Akamai bypass)
+    cookie_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bol_cookies.json")
+    if os.path.exists(cookie_path):
+        logger.info("bol_cookies.json: FOUND")
+    else:
+        logger.warning("bol_cookies.json: MISSING — product pages may get Akamai challenged. Upload cookies via Dashboard > Modules > bol > Cookies")
 
     state = await StateManager.create()
     client = httpx.AsyncClient(timeout=15)
