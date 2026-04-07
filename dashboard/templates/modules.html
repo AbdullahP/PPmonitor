@@ -75,6 +75,22 @@
       </div>
       {% endif %}
 
+      {% if m.shop_id in cookie_health %}
+      {% set ch = cookie_health[m.shop_id] %}
+      <div style="padding:6px 8px; background:var(--surface-low); border-radius:6px; font-size:0.65rem; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center">
+        <span>
+          {% if ch.status == 'fresh' %}
+            <span style="color:var(--primary)">&#127850; Cookies: Fresh ({{ ch.age_hours }}h ago)</span>
+          {% elif ch.status == 'stale' %}
+            <span style="color:var(--tertiary)">&#127850; Cookies: Stale ({{ ch.age_hours }}h ago)</span>
+          {% else %}
+            <span style="color:var(--error)">&#127850; Cookies: {% if ch.count == 0 %}Missing{% else %}Expired{% endif %}</span>
+          {% endif %}
+        </span>
+        <a href="/modules/{{ m.shop_id }}/cookies" class="btn-monitor" style="text-decoration:none; padding:2px 8px; font-size:9px">Update Cookies</a>
+      </div>
+      {% endif %}
+
       {% if m.shop_id == 'amazon_uk' %}
       <div style="padding:6px 8px; background:rgba(255,183,134,0.1); border:1px solid rgba(255,183,134,0.2); border-radius:6px; font-size:0.65rem; color:var(--tertiary); margin-bottom:8px">
         &#9888; Amazon UK may be blocked from server IPs. Consider using a residential proxy or disabling this module.

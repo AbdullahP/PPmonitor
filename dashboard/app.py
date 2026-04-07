@@ -1,5 +1,6 @@
 """Admin dashboard: FastAPI + Jinja2 + HTMX."""
 
+import json
 import logging
 import secrets
 import sys
@@ -257,11 +258,21 @@ async def modules_page(request: Request, state: StateManager = Depends(get_state
 
     rate_limiters = {s["shop_id"]: s for s in all_limiter_statuses()}
 
+    # Get cookie health for shops that use cookies (bol)
+    cookie_health = {}
+    for m in modules:
+        if m["shop_id"] == "bol":
+            try:
+                cookie_health[m["shop_id"]] = await state.get_cookie_health(m["shop_id"])
+            except Exception:
+                cookie_health[m["shop_id"]] = {"status": "missing", "count": 0, "age_hours": None}
+
     return templates.TemplateResponse(request, "modules.html", {
         "active_page": "modules",
         "modules": modules,
         "rate_limiters": rate_limiters,
         "shop_emoji": SHOP_EMOJI,
+        "cookie_health": cookie_health,
     })
 
 
@@ -339,6 +350,72 @@ async def test_module(shop_id: str, state: StateManager = Depends(get_state)):
             last_test_error=error_msg[:500],
         )
         return JSONResponse({"ok": False, "error": error_msg[:200]})
+
+
+# ---------------------------------------------------------------------------
+# Cookie management
+# ---------------------------------------------------------------------------
+
+@app.get("/modules/{shop_id}/cookies", response_class=HTMLResponse)
+async def cookies_page(
+    request: Request, shop_id: str, state: StateManager = Depends(get_state),
+):
+    try:
+        cookies = await state.get_shop_cookies(shop_id)
+    except Exception:
+        cookies = []
+    try:
+        health = await state.get_cookie_health(shop_id)
+    except Exception:
+        health = {"status": "missing", "count": 0, "age_hours": None}
+
+    return templates.TemplateResponse(request, "cookies.html", {
+        "active_page": "modules",
+        "shop_id": shop_id,
+        "cookies": cookies,
+        "health": health,
+    })
+
+
+@app.post("/modules/{shop_id}/cookies")
+async def save_cookies(
+    shop_id: str,
+    request: Request,
+    state: StateManager = Depends(get_state),
+):
+    body = await request.body()
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            cookies_data = json.loads(body)
+        except json.JSONDecodeError:
+            return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    else:
+        # Form submission with textarea
+        form = await request.form()
+        raw = form.get("cookies_json", "")
+        try:
+            cookies_data = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+
+    if not isinstance(cookies_data, list):
+        return JSONResponse({"ok": False, "error": "Expected JSON array"}, status_code=400)
+
+    count = await state.save_shop_cookies(shop_id, cookies_data)
+
+    # If this is a form submission, redirect back
+    if "application/json" not in content_type:
+        return RedirectResponse(f"/modules/{shop_id}/cookies", status_code=303)
+
+    return JSONResponse({"ok": True, "saved": count})
+
+
+@app.post("/modules/{shop_id}/cookies/delete")
+async def delete_cookies(shop_id: str, state: StateManager = Depends(get_state)):
+    await state.delete_shop_cookies(shop_id)
+    return RedirectResponse(f"/modules/{shop_id}/cookies", status_code=303)
 
 
 # ---------------------------------------------------------------------------

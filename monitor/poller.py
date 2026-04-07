@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+import time
+from datetime import date, datetime, timezone
 
 import httpx
 
@@ -17,6 +18,8 @@ from monitor.state import StateManager
 KEYWORD_SCAN_INTERVAL = 300  # 5 minutes
 QUEUE_CHECK_INTERVAL = 60  # 1 minute
 QUEUE_ALERT_COOLDOWN = 600  # 10 minutes between queue alerts
+COOKIE_ALERT_COOLDOWN = 3600  # 1 hour between cookie expiry alerts
+CHALLENGE_THRESHOLD = 5  # consecutive challenges before cookie alert
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,9 +27,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Track consecutive Akamai challenges per shop for cookie expiry alerts
+_challenge_counts: dict[str, int] = {}
+_last_cookie_alert: dict[str, float] = {}
+
+
+def get_poll_interval(product: dict) -> int:
+    """Determine poll interval based on release_date proximity."""
+    release_date = product.get("release_date")
+    priority = product.get("poll_priority", "normal")
+
+    if priority == "critical":
+        return 5
+
+    if release_date is None:
+        return 0  # use default
+
+    today = date.today()
+    if isinstance(release_date, datetime):
+        release_date = release_date.date()
+
+    days_until = (release_date - today).days
+    if days_until <= 1:
+        return 5
+    if days_until <= 7:
+        return 10
+    if days_until <= 30:
+        return 30
+    return 0  # use default
+
 
 async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
     """Poll all active products on a fixed interval."""
+    # Give bol adapter access to DB for cookie loading
+    try:
+        from monitor.shops.bol import set_state_manager
+        set_state_manager(state)
+    except ImportError:
+        pass
+
     while True:
         products = await state.list_products(active_only=True)
         polled = 0
@@ -93,21 +132,38 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
                         logger.info("STOCK CHANGE: %s [%s] → OutOfStock", product_id, shop)
 
                 # Update product state
-                await state.update_product(
-                    product_id,
-                    name=data.name,
-                    price=data.price,
-                    offer_uid=data.offer_uid,
-                    last_availability=data.availability,
-                    last_revision_id=data.revision_id,
-                    last_polled_at=datetime.now(timezone.utc),
-                )
+                update_fields = {
+                    "name": data.name,
+                    "price": data.price,
+                    "offer_uid": data.offer_uid,
+                    "last_availability": data.availability,
+                    "last_revision_id": data.revision_id,
+                    "last_polled_at": datetime.now(timezone.utc),
+                }
+                if data.seller:
+                    update_fields["seller"] = data.seller
+                await state.update_product(product_id, **update_fields)
 
             except httpx.HTTPStatusError as exc:
                 polled += 1
-                limiter.record_result(success=False, status_code=exc.response.status_code)
-                error_msg = f"HTTP {exc.response.status_code} for {url}"
+                status_code = exc.response.status_code
+                limiter.record_result(success=False, status_code=status_code)
+                error_msg = f"HTTP {status_code} for {url}"
                 logger.error("Poll failed for %s [%s]: %s", product_id, shop, error_msg)
+
+                # Track Akamai challenges (403) for cookie expiry alert
+                if status_code == 403 and "challenge" in str(exc).lower():
+                    _challenge_counts[shop] = _challenge_counts.get(shop, 0) + 1
+                    if _challenge_counts[shop] >= CHALLENGE_THRESHOLD:
+                        now_ts = time.monotonic()
+                        last = _last_cookie_alert.get(shop, 0)
+                        if now_ts - last > COOKIE_ALERT_COOLDOWN:
+                            from monitor.alerts import send_cookie_expiry_alert
+                            await send_cookie_expiry_alert(shop, state=state)
+                            _last_cookie_alert[shop] = now_ts
+                            _challenge_counts[shop] = 0
+                else:
+                    _challenge_counts[shop] = 0
 
                 await log_poll_result(
                     state, product_id=product_id, success=False, error_message=error_msg,
@@ -159,10 +215,17 @@ async def poll_products(state: StateManager, client: httpx.AsyncClient) -> None:
         shop_status = {s["shop_id"]: s for s in all_limiter_statuses()}
         await write_heartbeat(state, polled, shop_status=shop_status)
 
-        # Use the minimum interval across all active shops' limiters
+        # Use the minimum interval: consider per-product release-day escalation
         if products:
             shops_in_use = {p.get("shop", "bol") for p in products}
-            interval = min(get_limiter(s).current_interval() for s in shops_in_use)
+            shop_interval = min(get_limiter(s).current_interval() for s in shops_in_use)
+            # Check if any product has a release-day escalated interval
+            product_intervals = [get_poll_interval(p) for p in products]
+            product_intervals = [i for i in product_intervals if i > 0]
+            if product_intervals:
+                interval = min(shop_interval, min(product_intervals))
+            else:
+                interval = shop_interval
         else:
             interval = settings.poll_interval_product
         await asyncio.sleep(interval)

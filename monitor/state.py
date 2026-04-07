@@ -649,6 +649,80 @@ class StateManager:
                     )
                 logger.info("Seeded Discord server from env vars")
 
+    # ----- Shop cookies -----
+
+    async def get_shop_cookies(self, shop_id: str) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM shop_cookies WHERE shop_id = $1 ORDER BY cookie_name",
+                shop_id,
+            )
+            return [dict(r) for r in rows]
+
+    async def save_shop_cookies(self, shop_id: str, cookies: list[dict]) -> int:
+        """Upsert cookies for a shop. Returns count saved."""
+        count = 0
+        async with self._pool.acquire() as conn:
+            for c in cookies:
+                name = c.get("name", "").strip()
+                value = c.get("value", "")
+                if not name:
+                    continue
+                domain = c.get("domain", ".bol.com")
+                expires_at = None
+                if c.get("expires") or c.get("expirationDate"):
+                    import datetime as _dt
+                    ts = c.get("expires") or c.get("expirationDate")
+                    try:
+                        expires_at = _dt.datetime.fromtimestamp(float(ts), tz=_dt.timezone.utc)
+                    except (ValueError, TypeError, OSError):
+                        pass
+                await conn.execute(
+                    """INSERT INTO shop_cookies (shop_id, cookie_name, cookie_value, domain, expires_at, updated_at)
+                       VALUES ($1, $2, $3, $4, $5, NOW())
+                       ON CONFLICT (shop_id, cookie_name)
+                       DO UPDATE SET cookie_value = $3, domain = $4, expires_at = $5, updated_at = NOW()""",
+                    shop_id, name, value, domain, expires_at,
+                )
+                count += 1
+        return count
+
+    async def delete_shop_cookies(self, shop_id: str) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM shop_cookies WHERE shop_id = $1", shop_id
+            )
+            return int(result.split()[-1]) if result else 0
+
+    async def get_cookie_health(self, shop_id: str) -> dict:
+        """Return cookie freshness info for a shop."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT COUNT(*) as count,
+                          MIN(updated_at) as oldest_update,
+                          MAX(updated_at) as newest_update
+                   FROM shop_cookies WHERE shop_id = $1""",
+                shop_id,
+            )
+            if not row or row["count"] == 0:
+                return {"status": "missing", "count": 0, "age_hours": None}
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            age = now - row["newest_update"]
+            age_hours = age.total_seconds() / 3600
+            if age_hours < 24:
+                status = "fresh"
+            elif age_hours < 72:
+                status = "stale"
+            else:
+                status = "expired"
+            return {
+                "status": status,
+                "count": row["count"],
+                "age_hours": round(age_hours, 1),
+                "updated_at": row["newest_update"],
+            }
+
     # ----- System heartbeat -----
 
     async def write_heartbeat(self, products_polled_count: int, shop_status: dict | None = None) -> None:

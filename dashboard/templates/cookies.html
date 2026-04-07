@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Cookies - {{ shop_id }} - Pokemon Monitor{% endblock %}
+{% block page_title %}{{ shop_id }} Cookies{% endblock %}
+{% block content %}
+
+<!-- Cookie health status -->
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom:24px">
+  <div class="stat-card {% if health.status == 'fresh' %}stat-card--primary{% elif health.status == 'stale' %}stat-card--tertiary{% else %}stat-card--error{% endif %}">
+    <div class="stat-number">{{ health.count }}</div>
+    <div class="stat-label {% if health.status == 'fresh' %}stat-label--primary{% elif health.status == 'stale' %}stat-label--tertiary{% else %}stat-label--error{% endif %}">Cookies Stored</div>
+  </div>
+  <div class="stat-card {% if health.status == 'fresh' %}stat-card--primary{% elif health.status == 'stale' %}stat-card--tertiary{% else %}stat-card--error{% endif %}">
+    <div class="stat-number">{% if health.age_hours is not none %}{{ health.age_hours }}h{% else %}-{% endif %}</div>
+    <div class="stat-label {% if health.status == 'fresh' %}stat-label--primary{% elif health.status == 'stale' %}stat-label--tertiary{% else %}stat-label--error{% endif %}">Age</div>
+  </div>
+  <div class="stat-card {% if health.status == 'fresh' %}stat-card--primary{% elif health.status == 'stale' %}stat-card--tertiary{% else %}stat-card--error{% endif %}">
+    <div class="stat-number" style="font-size:1.2rem">{{ health.status | upper }}</div>
+    <div class="stat-label {% if health.status == 'fresh' %}stat-label--primary{% elif health.status == 'stale' %}stat-label--tertiary{% else %}stat-label--error{% endif %}">Status</div>
+  </div>
+</div>
+
+<!-- Current cookies -->
+{% if cookies %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Stored Cookies</span>
+    <form method="POST" action="/modules/{{ shop_id }}/cookies/delete" style="display:inline">
+      <button type="submit" class="btn-danger" onclick="return confirm('Delete all cookies?')">Delete All</button>
+    </form>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Domain</th>
+        <th>Value (preview)</th>
+        <th>Expires</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in cookies %}
+      <tr>
+        <td class="text-mono" style="font-size:0.75rem">{{ c.cookie_name }}</td>
+        <td style="font-size:0.75rem">{{ c.domain or '.bol.com' }}</td>
+        <td class="text-mono text-muted" style="font-size:0.65rem; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{ c.cookie_value[:40] }}{% if c.cookie_value|length > 40 %}...{% endif %}</td>
+        <td style="font-size:0.75rem">{% if c.expires_at %}{{ c.expires_at.strftime('%Y-%m-%d %H:%M') }}{% else %}-{% endif %}</td>
+        <td style="font-size:0.75rem">{% if c.updated_at %}{{ c.updated_at.strftime('%Y-%m-%d %H:%M') }}{% else %}-{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Update cookies form -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-header-title">Update Cookies</span>
+    <button onclick="document.getElementById('instructions').style.display = document.getElementById('instructions').style.display === 'none' ? 'block' : 'none'" class="btn-monitor" style="font-size:9px">How to Extract</button>
+  </div>
+  <div class="card-body">
+    <!-- Instructions (hidden by default) -->
+    <div id="instructions" style="display:none; margin-bottom:20px; padding:16px; background:var(--surface-low); border-radius:8px; border:1px solid var(--outline-variant)">
+      <h3 style="font-size:0.85rem; margin-bottom:12px; color:var(--primary)">How to update {{ shop_id }}.com cookies</h3>
+      <ol style="font-size:0.75rem; color:var(--on-surface-variant); line-height:1.8; padding-left:20px">
+        <li>Open Chrome and go to <strong>bol.com</strong> &mdash; browse any product page</li>
+        <li>Open DevTools (<code style="background:var(--surface-highest); padding:2px 6px; border-radius:3px">F12</code>) &rarr; <strong>Application</strong> tab &rarr; <strong>Cookies</strong> &rarr; bol.com</li>
+        <li>Find these cookies: <code>_abck</code>, <code>ak_bmsc</code>, <code>bm_sz</code>, <code>RT</code></li>
+        <li>Or use this snippet in <strong>DevTools Console</strong>:</li>
+      </ol>
+      <pre style="background:var(--surface-highest); padding:12px; border-radius:6px; font-size:0.7rem; margin:12px 0; overflow-x:auto; color:var(--primary)">JSON.stringify(document.cookie.split(';').map(c => {
+  const [name, ...rest] = c.trim().split('=');
+  return {name: name.trim(), value: rest.join('=') || '', domain: '.bol.com'};
+}))</pre>
+      <p style="font-size:0.7rem; color:var(--outline); margin-top:8px">
+        Or install the <strong>EditThisCookie</strong> or <strong>Cookie-Editor</strong> extension and export as JSON.
+        <br>Cookies typically last 2-7 days before needing a refresh.
+      </p>
+    </div>
+
+    <form method="POST" action="/modules/{{ shop_id }}/cookies">
+      <label for="cookies_json">Paste cookie JSON array</label>
+      <textarea name="cookies_json" id="cookies_json" rows="8" style="width:100%; background:var(--surface-low); border:1px solid var(--outline-variant); color:#fff; padding:12px; border-radius:8px; font-family:'SF Mono','Consolas',monospace; font-size:0.75rem; resize:vertical" placeholder='[{"name": "_abck", "value": "...", "domain": ".bol.com"}, ...]'></textarea>
+      <div style="margin-top:12px; display:flex; gap:12px; align-items:center">
+        <button type="submit" class="btn btn-primary">Save Cookies</button>
+        <span id="save-result" style="font-size:0.75rem"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div style="margin-top:16px">
+  <a href="/modules" class="btn-monitor" style="text-decoration:none">&larr; Back to Modules</a>
+</div>
+
+{% endblock %}

@@ -5,7 +5,7 @@ based on TLS fingerprint. curl_cffi impersonates Chrome's TLS stack.
 
 Two strategies for product data:
 1. Direct product pages — requires Akamai cookies (_abck, ak_bmsc, bm_sz)
-   loaded from bol_cookies.json or DB. Gives full JSON-LD (name, price, avail).
+   loaded from DB or bol_cookies.json. Gives full JSON-LD (name, price, avail).
 2. Search fallback — works without cookies, finds products by ID via search.
 """
 
@@ -30,27 +30,35 @@ RE_REVISION_ID = re.compile(r'\\?"revisionId\\?"\s*:\s*\\?"([a-f0-9-]+)\\?"')
 RE_OFFER_UID = re.compile(r'\\?"offerUid\\?"\s*:\s*\\?"([a-f0-9-]+)\\?"')
 RE_PRODUCT_ID = re.compile(r'/nl/nl/p/[^"]*?/(\d{7,})/')
 
-# Cookie file path (optional — loaded at startup if present)
+# Cookie file path (optional — fallback if DB has no cookies)
 _COOKIE_FILE = Path(__file__).resolve().parent.parent.parent / "bol_cookies.json"
 
 # Shared session
 _session: cffi_requests.Session | None = None
 _session_ready: bool = False
+# StateManager reference, set by poller before first fetch
+_state_manager = None
+
+
+def set_state_manager(state) -> None:
+    """Called by poller to give bol adapter access to DB cookies."""
+    global _state_manager
+    _state_manager = state
 
 
 def _get_session() -> cffi_requests.Session:
     global _session, _session_ready
     if _session is None:
         _session = cffi_requests.Session(impersonate="chrome131")
-        _load_cookies(_session)
+        _load_cookies_from_file(_session)
     return _session
 
 
-def _load_cookies(session: cffi_requests.Session) -> None:
-    """Load Akamai cookies from bol_cookies.json if it exists."""
+def _load_cookies_from_file(session: cffi_requests.Session) -> None:
+    """Load Akamai cookies from bol_cookies.json (fallback if DB empty)."""
     global _session_ready
     if not _COOKIE_FILE.exists():
-        logger.debug("No bol_cookies.json found — will use search fallback")
+        logger.debug("No bol_cookies.json found — will try DB or search fallback")
         return
     try:
         cookies_data = json.loads(_COOKIE_FILE.read_text(encoding="utf-8"))
@@ -65,12 +73,43 @@ def _load_cookies(session: cffi_requests.Session) -> None:
         logger.warning("Failed to load bol_cookies.json", exc_info=True)
 
 
+async def _load_cookies_from_db(session: cffi_requests.Session) -> bool:
+    """Load cookies from DB. Returns True if cookies were loaded."""
+    global _session_ready
+    if _state_manager is None:
+        return False
+    try:
+        cookies = await _state_manager.get_shop_cookies("bol")
+        if not cookies:
+            return False
+        for c in cookies:
+            session.cookies.set(
+                c["cookie_name"], c["cookie_value"],
+                domain=c.get("domain", ".bol.com"),
+            )
+        _session_ready = True
+        logger.info("Loaded %d Akamai cookies from DB", len(cookies))
+        return True
+    except Exception:
+        logger.warning("Failed to load cookies from DB", exc_info=True)
+        return False
+
+
 async def _ensure_session() -> None:
-    """Ensure the session has valid cookies — warm up via search if needed."""
+    """Ensure the session has valid cookies — DB first, then file, then warmup."""
     global _session_ready
     if _session_ready:
         return
     session = _get_session()
+
+    # Try DB cookies first
+    if not _session_ready:
+        await _load_cookies_from_db(session)
+
+    if _session_ready:
+        return
+
+    # Warmup via search page
     try:
         resp = session.get(
             "https://www.bol.com/nl/nl/s/?searchtext=pokemon+tcg&view=list",
