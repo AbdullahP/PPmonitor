@@ -182,25 +182,39 @@ async def send_stock_alert(
 ) -> None:
     emoji = SHOP_EMOJI.get(shop, "\U0001f7e0")
     display_name = product.name or product.product_id
+    seller = product.seller or "Unknown"
+    is_official = seller.lower() == "bol" if shop == "bol" else False
+
+    if is_official:
+        seller_line = "\U0001f534 **bol.com (official)**"
+        priority_label = "HIGH PRIORITY"
+    elif seller != "Unknown":
+        seller_line = f"\U0001f7e1 **{seller}** (3rd party)"
+        priority_label = "Stock detected"
+    else:
+        seller_line = f"**{seller}**"
+        priority_label = "Stock detected"
+
     payload = {
-        "content": "@everyone Pokemon TCG stock detected!",
+        "content": f"@everyone Pokemon TCG {priority_label.lower()}!",
         "embeds": [{
             "title": f"{emoji} IN STOCK [{shop}]: {display_name}",
-            "description": f"**Seller:** {product.seller or 'Unknown'}",
+            "description": f"**Seller:** {seller_line}",
             "url": redirect_url,
-            "color": 0x00FF00,
+            "color": 0xFF0000 if is_official else 0x00FF00,
             "fields": [
                 {"name": "Price", "value": f"\u20ac{product.price or '?'}", "inline": True},
                 {"name": "Quick Buy", "value": f"[Add to Cart]({redirect_url})", "inline": True},
+                {"name": "Priority", "value": priority_label, "inline": True},
             ],
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }],
     }
     alert_id = None
     if state:
-        alert_id = await state.log_alert(product.product_id, "stock_change", f"Stock alert: {product.name} - InStock - {redirect_url}")
+        alert_id = await state.log_alert(product.product_id, "stock_change", f"Stock alert: {product.name} - InStock - {seller} - {redirect_url}")
     await _send_to_all("public", payload, state=state, alert_id=alert_id)
-    logger.info("Stock alert sent for %s [%s]", product.product_id, shop)
+    logger.info("Stock alert sent for %s [%s] seller=%s", product.product_id, shop, seller)
 
 
 async def send_out_of_stock_alert(
@@ -261,6 +275,27 @@ async def send_queue_alert(pc_url: str, state: StateManager | None = None) -> No
         alert_id = await state.log_alert(None, "queue", f"PC queue active: {pc_url}")
     await _send_to_all("queue", payload, state=state, alert_id=alert_id)
     logger.info("Queue alert sent for Pokemon Center: %s", pc_url)
+
+
+async def send_cookie_expiry_alert(
+    shop_id: str, state: StateManager | None = None,
+) -> None:
+    payload = {
+        "embeds": [{
+            "title": f"\u26a0\ufe0f {shop_id} cookies may have expired",
+            "description": (
+                f"Product fetches for **{shop_id}** are getting Akamai challenged.\n"
+                f"Please update cookies via **Dashboard \u2192 Modules \u2192 {shop_id} \u2192 Cookies**."
+            ),
+            "color": 0xFFCC00,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }],
+    }
+    alert_id = None
+    if state:
+        alert_id = await state.log_alert(None, "cookie_expiry", f"Cookie expiry warning for {shop_id}")
+    await _send_to_all("admin", payload, state=state, alert_id=alert_id)
+    logger.warning("Cookie expiry alert sent for %s", shop_id)
 
 
 async def send_discovery_alert(
