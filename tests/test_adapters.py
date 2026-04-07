@@ -55,10 +55,78 @@ def test_bol_parse_json_ld():
     assert data.offer_uid == "ddd-eee-fff"
 
 
+def test_bol_build_product_url_prijsoverzicht():
+    adapter = BolAdapter()
+    url = adapter.build_product_url("9300000271683065")
+    assert "prijsoverzicht/ppmonitor/9300000271683065" in url
+
+
 def test_bol_parse_category():
     adapter = BolAdapter()
     ids = adapter.parse_category(BOL_CATEGORY_HTML)
     assert ids == {"1234567890", "9876543210"}
+
+
+# ---------------------------------------------------------------------------
+# Bol.com — prijsoverzicht parsing
+# ---------------------------------------------------------------------------
+
+BOL_PRIJSOVERZICHT_HTML = """\
+<html><body>
+<script>window.__REACT_ROUTER_CONTEXT__={
+  "purchaseType":"STANDARD",
+  "revisionId":"abc-def-123",
+  "offerUid":"ddd-eee-fff",
+  "name":"Pokemon TCG Perfect Order Booster Pack",
+  "amount":"6.99"
+}</script>
+</body></html>
+"""
+
+BOL_PRIJSOVERZICHT_OOS_HTML = """\
+<html><body>
+<script>window.__REACT_ROUTER_CONTEXT__={
+  "purchaseType":"NOT_AVAILABLE",
+  "revisionId":"abc-def-789",
+  "name":"Pokemon TCG Perfect Order ETB",
+  "amount":"59.99"
+}</script>
+</body></html>
+"""
+
+
+def test_bol_parse_prijsoverzicht_in_stock():
+    adapter = BolAdapter()
+    data = adapter.parse_prijsoverzicht(
+        BOL_PRIJSOVERZICHT_HTML,
+        url="https://www.bol.com/nl/nl/prijsoverzicht/ppmonitor/9300000271683065/",
+    )
+    assert data is not None
+    assert data.product_id == "9300000271683065"
+    assert data.name == "Pokemon TCG Perfect Order Booster Pack"
+    assert data.price == "6.99"
+    assert data.availability == "InStock"
+    assert data.revision_id == "abc-def-123"
+    assert data.offer_uid == "ddd-eee-fff"
+    assert data.seller == "bol"
+
+
+def test_bol_parse_prijsoverzicht_out_of_stock():
+    adapter = BolAdapter()
+    data = adapter.parse_prijsoverzicht(
+        BOL_PRIJSOVERZICHT_OOS_HTML,
+        url="https://www.bol.com/nl/nl/prijsoverzicht/ppmonitor/9300000272060999/",
+    )
+    assert data is not None
+    assert data.availability == "OutOfStock"
+    assert data.name == "Pokemon TCG Perfect Order ETB"
+    assert data.seller is None
+
+
+def test_bol_parse_prijsoverzicht_empty():
+    adapter = BolAdapter()
+    data = adapter.parse_prijsoverzicht("<html><body>Nothing here</body></html>")
+    assert data is None
 
 
 # ---------------------------------------------------------------------------

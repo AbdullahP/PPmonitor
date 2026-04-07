@@ -3,10 +3,11 @@
 Bol.com uses Akamai for bot detection which blocks standard httpx/requests
 based on TLS fingerprint. curl_cffi impersonates Chrome's TLS stack.
 
-Two strategies for product data:
-1. Direct product pages — requires Akamai cookies (_abck, ak_bmsc, bm_sz)
-   loaded from DB or bol_cookies.json. Gives full JSON-LD (name, price, avail).
-2. Search fallback — works without cookies, finds products by ID via search.
+Three strategies for product data (tried in order):
+1. Prijsoverzicht page — lightweight price-comparison page with all signals
+   in __reactRouterContext: purchaseType, price, revisionId, offerUid, name.
+2. Direct product pages — JSON-LD (name, price, avail, seller).
+3. Search fallback — extract data from search results by product ID.
 """
 
 from __future__ import annotations
@@ -29,6 +30,11 @@ logger = logging.getLogger(__name__)
 RE_REVISION_ID = re.compile(r'\\?"revisionId\\?"\s*:\s*\\?"([a-f0-9-]+)\\?"')
 RE_OFFER_UID = re.compile(r'\\?"offerUid\\?"\s*:\s*\\?"([a-f0-9-]+)\\?"')
 RE_PRODUCT_ID = re.compile(r'/nl/nl/p/[^"]*?/(\d{7,})/')
+RE_PURCHASE_TYPE = re.compile(r'"purchaseType"\s*:\s*"([^"]+)"')
+RE_AMOUNT = re.compile(r'"amount"\s*:\s*"?(\d+(?:\.\d+)?)"?')
+RE_NAME = re.compile(r'"name"\s*:\s*"([^"]{5,120})"')
+
+PRIJSOVERZICHT_SLUG = "ppmonitor"
 
 # Cookie file path (optional — fallback if DB has no cookies)
 _COOKIE_FILE = Path(__file__).resolve().parent.parent.parent / "bol_cookies.json"
@@ -173,6 +179,47 @@ class BolAdapter(ShopAdapter):
             seller=seller,
         )
 
+    def parse_prijsoverzicht(self, html: str, url: str = "") -> ProductData | None:
+        """Parse a prijsoverzicht page — extracts data from __reactRouterContext."""
+        purchase_match = RE_PURCHASE_TYPE.search(html)
+        purchase_type = purchase_match.group(1) if purchase_match else None
+
+        price_match = RE_AMOUNT.search(html)
+        price = price_match.group(1) if price_match else None
+
+        revision_match = RE_REVISION_ID.search(html)
+        revision_id = revision_match.group(1) if revision_match else None
+
+        offer_match = RE_OFFER_UID.search(html)
+        offer_uid = offer_match.group(1) if offer_match else None
+
+        name_match = RE_NAME.search(html)
+        name = name_match.group(1) if name_match else None
+
+        # Extract product ID from URL
+        pid_match = re.search(r"(\d{7,})", url)
+        product_id = pid_match.group(1) if pid_match else ""
+
+        if not revision_id and not price:
+            return None
+
+        if purchase_type == "STANDARD":
+            availability = "InStock"
+        elif purchase_type:
+            availability = "OutOfStock"
+        else:
+            availability = "Unknown"
+
+        return ProductData(
+            product_id=product_id,
+            name=name,
+            price=price,
+            availability=availability,
+            offer_uid=offer_uid,
+            revision_id=revision_id,
+            seller="bol" if purchase_type == "STANDARD" else None,
+        )
+
     def parse_category(self, html: str) -> set[str]:
         return set(RE_PRODUCT_ID.findall(html))
 
@@ -250,6 +297,10 @@ class BolAdapter(ShopAdapter):
         return None
 
     def build_product_url(self, product_id: str) -> str:
+        return f"{self.base_url}/nl/nl/prijsoverzicht/{PRIJSOVERZICHT_SLUG}/{product_id}/"
+
+    def build_direct_product_url(self, product_id: str) -> str:
+        """Build the regular product page URL (fallback)."""
         return f"{self.base_url}/nl/nl/p/-/{product_id}/"
 
     def build_category_urls(self) -> list[str]:
@@ -265,54 +316,68 @@ class BolAdapter(ShopAdapter):
     async def fetch_product(
         self, client: httpx.AsyncClient, url: str
     ) -> ProductData:
-        """Fetch product page via curl_cffi with Akamai bypass."""
+        """Fetch product data via curl_cffi.
+
+        Strategy order:
+        1. Prijsoverzicht page (lightweight, has all signals)
+        2. Direct product page (JSON-LD, full data)
+        3. Search fallback (name/price from search results)
+        """
         start = time.monotonic()
         await _ensure_session()
         session = _get_session()
 
+        # Extract product ID from any bol.com URL format
+        pid_match = re.search(r"(\d{7,})", url)
+        pid = pid_match.group(1) if pid_match else ""
+
         try:
-            resp = session.get(url, timeout=15)
+            # Strategy 1: Prijsoverzicht page
+            prijs_url = self.build_product_url(pid) if pid else url
+            resp = session.get(prijs_url, timeout=15)
             latency_ms = int((time.monotonic() - start) * 1000)
 
-            if resp.status_code != 200:
-                raise httpx.HTTPStatusError(
-                    f"HTTP {resp.status_code}",
-                    request=httpx.Request("GET", url),
-                    response=httpx.Response(resp.status_code),
-                )
+            if resp.status_code == 200 and len(resp.text) >= 5000:
+                data = self.parse_prijsoverzicht(resp.text, url=prijs_url)
+                if data and (data.revision_id or data.price):
+                    data.latency_ms = latency_ms
+                    if not data.product_id and pid:
+                        data.product_id = pid
+                    logger.debug("Prijsoverzicht OK for %s", pid)
+                    return data
 
-            # Detect Akamai challenge page (small response)
-            if len(resp.text) < 5000:
-                logger.warning("Bol.com challenge page — trying search fallback")
-                # Extract product_id from URL for search
-                pid_match = re.search(r"(\d{7,})", url)
-                pid = pid_match.group(1) if pid_match else ""
-                if pid:
-                    fallback = await self._search_fallback(session, pid)
-                    if fallback and fallback.name:
-                        fallback.latency_ms = latency_ms
-                        logger.info("Search fallback succeeded for %s", pid)
-                        return fallback
-                # Fallback failed — reset session and raise
-                global _session_ready, _session
-                _session_ready = False
-                _session = None
-                raise httpx.HTTPStatusError(
-                    "Akamai challenge page — will retry next cycle",
-                    request=httpx.Request("GET", url),
-                    response=httpx.Response(403),
-                )
+            # Strategy 2: Direct product page (if prijsoverzicht failed)
+            if pid:
+                direct_url = self.build_direct_product_url(pid)
+                resp = session.get(direct_url, timeout=15)
+                latency_ms = int((time.monotonic() - start) * 1000)
 
-            data = self.parse_product(resp.text, url=url)
-            data.latency_ms = latency_ms
+                if resp.status_code == 200 and len(resp.text) >= 5000:
+                    data = self.parse_product(resp.text, url=direct_url)
+                    data.latency_ms = latency_ms
+                    if not data.product_id:
+                        data.product_id = pid
+                    logger.debug("Direct product page OK for %s", pid)
+                    return data
 
-            # If JSON-LD didn't have the product ID, extract from URL
-            if not data.product_id:
-                pid_match = re.search(r"(\d{7,})", url)
-                if pid_match:
-                    data.product_id = pid_match.group(1)
+            # Strategy 3: Search fallback
+            if pid:
+                logger.warning("Bol.com pages blocked — trying search fallback for %s", pid)
+                fallback = await self._search_fallback(session, pid)
+                if fallback and fallback.name:
+                    fallback.latency_ms = latency_ms
+                    logger.info("Search fallback succeeded for %s", pid)
+                    return fallback
 
-            return data
+            # All strategies failed — reset session
+            global _session_ready, _session
+            _session_ready = False
+            _session = None
+            raise httpx.HTTPStatusError(
+                "All fetch strategies failed (prijsoverzicht, direct, search)",
+                request=httpx.Request("GET", url),
+                response=httpx.Response(403),
+            )
 
         except httpx.HTTPStatusError:
             raise
@@ -392,33 +457,56 @@ class BolAdapter(ShopAdapter):
         except Exception as exc:
             debug["category_error"] = f"{type(exc).__name__}: {exc}"
 
-        # Try one product page
+        # Try prijsoverzicht page first
         if product_ids:
             pid = next(iter(product_ids))
-            product_url = self.build_product_url(pid)
-            debug["test_product_url"] = product_url
+
+            # Prijsoverzicht
+            prijs_url = self.build_product_url(pid)
+            debug["prijsoverzicht_url"] = prijs_url
             try:
-                resp = session.get(product_url, timeout=15)
-                debug["product_status"] = resp.status_code
-                debug["product_body_length"] = len(resp.text)
-                debug["product_akamai_blocked"] = len(resp.text) < 5000
-                debug["product_body_snippet"] = resp.text[:500]
+                resp = session.get(prijs_url, timeout=15)
+                debug["prijs_status"] = resp.status_code
+                debug["prijs_body_length"] = len(resp.text)
+                debug["prijs_body_snippet"] = resp.text[:200]
+                debug["prijs_akamai_blocked"] = len(resp.text) < 5000
                 if len(resp.text) >= 5000:
-                    data = self.parse_product(resp.text, url=product_url)
-                    debug["product_name"] = data.name
-                    debug["product_price"] = data.price
-                    debug["product_availability"] = data.availability
-                    debug["product_seller"] = data.seller
-                else:
-                    # Try search fallback
-                    fallback = await self._search_fallback(session, pid)
-                    if fallback:
-                        debug["search_fallback"] = "success"
-                        debug["fallback_name"] = fallback.name
-                        debug["fallback_price"] = fallback.price
+                    data = self.parse_prijsoverzicht(resp.text, url=prijs_url)
+                    if data:
+                        debug["prijs_name"] = data.name
+                        debug["prijs_price"] = data.price
+                        debug["prijs_availability"] = data.availability
+                        debug["prijs_revision_id"] = data.revision_id
+                        debug["prijs_offer_uid"] = data.offer_uid
+                        debug["prijs_purchase_type"] = RE_PURCHASE_TYPE.search(resp.text)
+                        if debug["prijs_purchase_type"]:
+                            debug["prijs_purchase_type"] = debug["prijs_purchase_type"].group(1)
                     else:
-                        debug["search_fallback"] = "failed"
+                        debug["prijs_parse"] = "failed — no revision_id or price found"
             except Exception as exc:
-                debug["product_error"] = f"{type(exc).__name__}: {exc}"
+                debug["prijs_error"] = f"{type(exc).__name__}: {exc}"
+
+            # Direct product page (for comparison)
+            direct_url = self.build_direct_product_url(pid)
+            debug["direct_product_url"] = direct_url
+            try:
+                resp = session.get(direct_url, timeout=15)
+                debug["direct_status"] = resp.status_code
+                debug["direct_body_length"] = len(resp.text)
+                debug["direct_akamai_blocked"] = len(resp.text) < 5000
+            except Exception as exc:
+                debug["direct_error"] = f"{type(exc).__name__}: {exc}"
+
+            # Search fallback (for comparison)
+            try:
+                fallback = await self._search_fallback(session, pid)
+                if fallback:
+                    debug["search_fallback"] = "success"
+                    debug["fallback_name"] = fallback.name
+                    debug["fallback_price"] = fallback.price
+                else:
+                    debug["search_fallback"] = "failed"
+            except Exception as exc:
+                debug["search_error"] = f"{type(exc).__name__}: {exc}"
 
         return debug
