@@ -49,7 +49,11 @@ def set_state_manager(state) -> None:
 def _get_session() -> cffi_requests.Session:
     global _session, _session_ready
     if _session is None:
+        from config import settings
         _session = cffi_requests.Session(impersonate="chrome131")
+        if settings.bol_proxy_url:
+            _session.proxies = {"https": settings.bol_proxy_url, "http": settings.bol_proxy_url}
+            logger.info("Bol.com using proxy: %s", settings.bol_proxy_url.split("@")[-1] if "@" in settings.bol_proxy_url else "configured")
         _load_cookies_from_file(_session)
     return _session
 
@@ -351,12 +355,14 @@ class BolAdapter(ShopAdapter):
 
     async def diagnose(self) -> dict:
         """Run diagnostic fetch sequence and return raw debug info."""
+        from config import settings
         debug: dict = {}
         await _ensure_session()
         session = _get_session()
 
         debug["session_ready"] = _session_ready
         debug["cookies_count"] = len(session.cookies)
+        debug["proxy"] = bool(settings.bol_proxy_url)
 
         # Warmup / search page
         warmup_url = f"{self.base_url}/nl/nl/s/?searchtext=pokemon+tcg&view=list"
@@ -364,6 +370,7 @@ class BolAdapter(ShopAdapter):
             resp = session.get(warmup_url, timeout=15)
             debug["warmup_status"] = resp.status_code
             debug["warmup_body_length"] = len(resp.text)
+            debug["warmup_body_snippet"] = resp.text[:200]
             debug["warmup_akamai_blocked"] = len(resp.text) < 5000
             product_ids = self.parse_category(resp.text)
             debug["warmup_product_ids_found"] = len(product_ids)
